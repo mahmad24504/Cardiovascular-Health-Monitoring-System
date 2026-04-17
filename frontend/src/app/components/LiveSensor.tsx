@@ -23,6 +23,7 @@ interface PPGBPResult {
   model_name: string;
 }
 
+
 const EMPTY: Vitals = {
   hr: null, spo2: null, sbp: null, dbp: null, mean_bp: null,
   blood_sugar: null, heart_rate_type: null, heart_rate_type_confidence: null,
@@ -62,19 +63,28 @@ function bpCategory(sbp: number, dbp: number) {
   return                              { label: "High Stage 2",    color: "text-red-700",     bg: "bg-red-100"     };
 }
 
+
 function ECGWaveform({ samples }: { samples: number[] }) {
-  const W = 400; const H = 80;
-  const data = samples.slice(-120);
+  const W = 800; const H = 100;
+  // Show last 500 samples (~2 seconds at 250 Hz) — enough to see 2-3 full heartbeats
+  const data = samples.slice(-500);
   if (data.length < 2) return (
-    <div className="h-20 bg-slate-800 rounded-xl flex items-center justify-center">
+    <div className="h-24 bg-slate-800 rounded-xl flex items-center justify-center">
       <p className="text-emerald-400 text-sm animate-pulse">Waiting for ECG data…</p>
     </div>
   );
   const min = Math.min(...data); const max = Math.max(...data); const range = max - min || 1;
-  const pts = data.map((v, i) => `${((i/(data.length-1))*W).toFixed(1)},${(H-((v-min)/range)*H*0.8-H*0.1).toFixed(1)}`);
+  const pts = data.map((v, i) =>
+    `${((i / (data.length - 1)) * W).toFixed(1)},${(H - ((v - min) / range) * H * 0.85 - H * 0.075).toFixed(1)}`
+  );
   return (
     <div className="bg-slate-900 rounded-xl p-2">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-24" preserveAspectRatio="none">
+        {/* Subtle grid lines */}
+        {[0.25, 0.5, 0.75].map(f => (
+          <line key={f} x1="0" y1={H * f} x2={W} y2={H * f}
+            stroke="#1e293b" strokeWidth="1" />
+        ))}
         <polyline points={pts.join(" ")} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
     </div>
@@ -113,6 +123,81 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
   const ppgBufferRef    = useRef<number[]>([]);
   const isPredictingRef = useRef(false);
   const socketRef       = useRef<Socket | null>(null);
+
+  // Rolling ECG buffer — accumulates across batches so the waveform scrolls
+  const ecgBufferRef = useRef<number[]>([]);
+  const [ecgSamples, setEcgSamples] = useState<number[]>([]);
+
+  // ECG recording
+  type RecordState = "idle" | "recording" | "done";
+  const [recordState,     setRecordState]     = useState<RecordState>("idle");
+  const [countdown,       setCountdown]       = useState(5);
+  const [recordedSamples, setRecordedSamples] = useState<number[]>([]);
+  const [recordedAt,      setRecordedAt]      = useState<string>("");
+  const recordingRef      = useRef(false);          // readable inside socket closure
+  const recordBufRef      = useRef<number[]>([]);
+  const recTimerRef       = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const cntTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRecording = () => {
+    recordBufRef.current   = [];
+    recordingRef.current   = true;
+    setRecordState("recording");
+    setCountdown(5);
+    setRecordedSamples([]);
+
+    let secs = 5;
+    cntTimerRef.current = setInterval(() => {
+      secs--;
+      setCountdown(secs);
+      if (secs <= 0) clearInterval(cntTimerRef.current!);
+    }, 1000);
+
+    recTimerRef.current = setTimeout(() => {
+      recordingRef.current = false;
+      clearInterval(cntTimerRef.current!);
+      const captured = [...recordBufRef.current];
+      setRecordedSamples(captured);
+      setRecordedAt(new Date().toISOString());
+      setRecordState("done");
+    }, 5000);
+  };
+
+  const resetRecording = () => {
+    clearTimeout(recTimerRef.current!);
+    clearInterval(cntTimerRef.current!);
+    recordingRef.current = false;
+    recordBufRef.current = [];
+    setRecordState("idle");
+    setRecordedSamples([]);
+    setCountdown(5);
+  };
+
+  const saveRecordingCsv = () => {
+    if (recordedSamples.length === 0) return;
+    const fs    = 250;
+    const lines = [
+      `# ECG Recording — Cardiotrix`,
+      `# Recorded   : ${recordedAt}`,
+      `# Duration   : ~5 seconds`,
+      `# Sample Rate: ${fs} Hz`,
+      `# Samples    : ${recordedSamples.length}`,
+      `# Filter     : Bandpass 0.5-40Hz · Notch 50Hz · Savitzky-Golay · Z-normalized`,
+      ``,
+      `Sample_Index,Time_ms,Amplitude`,
+      ...recordedSamples.map((v, i) =>
+        `${i},${((i / fs) * 1000).toFixed(2)},${v.toFixed(6)}`
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `ecg_recording_${recordedAt.replace(/[:.]/g, "-").slice(0, 19)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
 
   // Run prediction against the PPG-only model server
   const runPpgPrediction = async (samples: number[]) => {
@@ -159,6 +244,19 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
     const handle = (data: any) => {
       if (deviceId && data.deviceId && data.deviceId !== deviceId) return;
 
+      const newEcg: number[] = Array.isArray(data.ecg) ? data.ecg
+                             : Array.isArray(data.ecg_data) ? data.ecg_data : [];
+
+      // Accumulate ECG into rolling 500-sample buffer so waveform scrolls
+      if (newEcg.length > 0) {
+        ecgBufferRef.current = [...ecgBufferRef.current, ...newEcg].slice(-500);
+        setEcgSamples([...ecgBufferRef.current]);
+        // Collect into recording buffer if active
+        if (recordingRef.current) {
+          recordBufRef.current.push(...newEcg);
+        }
+      }
+
       const v: Vitals = {
         hr:   data.hr   ?? null,
         spo2: data.spo2 ?? null,
@@ -169,7 +267,7 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
         heart_rate_type: data.heart_rate_type ?? null,
         heart_rate_type_confidence: data.heart_rate_type_confidence ?? null,
         heart_sound_all_probs: data.heart_sound_all_probs ?? null,
-        ecg: Array.isArray(data.ecg) ? data.ecg : Array.isArray(data.ecg_data) ? data.ecg_data : [],
+        ecg: newEcg,
         ppg: Array.isArray(data.ppg) ? data.ppg : [],
         timestamp: data.timestamp ?? new Date().toISOString(),
       };
@@ -199,6 +297,7 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
 
     socket.on("new_reading", handle);
     socket.on("newReading",  handle);
+
     return () => {
       socket.off("new_reading", handle);
       socket.off("newReading",  handle);
@@ -387,14 +486,75 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
         </div>
       </div>
 
-      {/* ECG waveform */}
-      <div className="bg-slate-900 rounded-2xl p-5 border-2 border-slate-700">
-        <div className="flex items-center justify-between mb-3">
+      {/* ECG waveform + recording */}
+      <div className="bg-slate-900 rounded-2xl p-5 border-2 border-slate-700 space-y-4">
+
+        {/* Header row */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm font-semibold text-emerald-400">ECG Waveform</p>
-          <span className="text-xs text-slate-400">{vitals.ecg.length > 0 ? `${vitals.ecg.length} samples` : "Awaiting device"}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-400">
+              {ecgSamples.length > 0 ? `${ecgSamples.length} samples` : "Awaiting ESP32…"}
+            </span>
+
+            {/* Record button */}
+            {recordState === "idle" && (
+              <button
+                onClick={startRecording}
+                disabled={ecgSamples.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600
+                           disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-white" />
+                Record ECG
+              </button>
+            )}
+
+            {recordState === "recording" && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-900/60 border border-red-700">
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
+                <span className="text-red-300 text-xs font-semibold">Recording… {countdown}s</span>
+              </div>
+            )}
+
+            {recordState === "done" && (
+              <button
+                onClick={resetRecording}
+                className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold transition-colors"
+              >
+                Record Again
+              </button>
+            )}
+          </div>
         </div>
-        <ECGWaveform samples={vitals.ecg} />
+
+        {/* Live waveform */}
+        <ECGWaveform samples={ecgSamples} />
+
+        {/* Recording result */}
+        {recordState === "done" && recordedSamples.length > 0 && (
+          <div className="border border-emerald-800 rounded-xl p-4 bg-slate-950 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm font-semibold text-emerald-400">Recording Complete</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {recordedSamples.length} samples · ~{(recordedSamples.length / 250).toFixed(1)}s · 250 Hz
+                </p>
+              </div>
+              <button
+                onClick={saveRecordingCsv}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600
+                           text-white text-xs font-semibold transition-colors"
+              >
+                ↓ Save CSV
+              </button>
+            </div>
+            {/* Preview of recorded waveform */}
+            <ECGWaveform samples={recordedSamples} />
+          </div>
+        )}
       </div>
+
     </div>
   );
 }

@@ -4,7 +4,7 @@
  * MAX30102 (HR / SpO2 / PPG)  +  INMP441 (PCG microphone)  +  LCD 16×2 I2C
  *
  * WiFi    : NCIL_Lab  /  ncillab@123
- * Server  : http://192.168.0.102:5000/api/readings
+ * Server  : http://10.7.241.2:5000/api/readings
  *
  * Pin map
  * ─────────────────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@
 // WiFi
 const char* SSID       = "Ahmad";
 const char* PASSWORD   = "ouatiwafy2";
-const char* SERVER_URL = "http://10.229.184.200:5000/api/readings";
+const char* SERVER_URL = "http://10.7.241.2:5000/api/readings";
 
 // I2C pins (shared by MAX30102 and LCD)
 #define SDA_PIN 21

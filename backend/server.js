@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const axios   = require("axios");
 const fs      = require("fs");
 const path    = require("path");
 const http    = require("http");
@@ -137,6 +138,34 @@ app.post("/api/readings", validateSensorReading, async (req, res) => {
     io.emit("new_reading", normalized);
     io.emit("newReading",  normalized);
 
+    // ── ECG snapshot (same logic as /api/ecg) ─────────────────────────────
+    if (normalized.ecg.length > 0) {
+      analyzeEcg(normalized.ecg).then(analysis => {
+        const filteredEcg = analysis?.ecg_filtered || normalized.ecg;
+        const entry = {
+          ecg:           filteredEcg,
+          quality_score: analysis?.quality_score ?? 10,
+          status:        analysis?.status        ?? "poor_signal",
+          analysis:      analysis?.analysis      ?? "Signal received",
+          suggestion:    analysis?.suggestion    ?? "Attach electrodes firmly for a cleaner signal.",
+          hr_estimate:   analysis?.hr_estimate   ?? null,
+          rr_cv:         analysis?.rr_cv         ?? null,
+          n_peaks:       analysis?.n_peaks       ?? 0,
+          timestamp:     normalized.timestamp,
+        };
+        if (!bestSnapshotSoFar || entry.quality_score >= bestSnapshotSoFar.quality_score) {
+          bestSnapshotSoFar = entry;
+        }
+        const now = Date.now();
+        if (bestSnapshotSoFar && now - lastSnapshotEmitMs >= SNAPSHOT_INTERVAL_MS) {
+          console.log(`📸 ECG snapshot: quality=${bestSnapshotSoFar.quality_score} status=${bestSnapshotSoFar.status} HR=${bestSnapshotSoFar.hr_estimate}`);
+          io.emit("ecg_snapshot", bestSnapshotSoFar);
+          lastSnapshotEmitMs = now;
+          bestSnapshotSoFar  = null;
+        }
+      }).catch(() => {});
+    }
+
     res.json({
       ok:        true,
       patientId: normalized.patientId || "unlinked",
@@ -208,6 +237,84 @@ app.get("/api/record/status", (_req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   ECG STREAM  (ESP32 #2 — AD8232)
+   Calls ecg_filter_server.py (port 5004) /analyze — filters the signal AND
+   scores its quality so we can pick the clearest segment for the snapshot.
+   Falls back to raw if filter service is down.
+   POST /api/ecg  { deviceId, ecg: [number, ...] }
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ECG_FILTER_URL = process.env.ECG_FILTER_URL || "http://localhost:5004";
+
+// Rolling buffer: last 60 s of analyzed ECG batches for snapshot selection
+let ecgSnapshotBuffer  = [];
+let bestSnapshotSoFar  = null;   // best seen since last emit
+let lastSnapshotEmitMs = 0;
+const SNAPSHOT_INTERVAL_MS = 30_000;   // emit every 30 s
+
+async function analyzeEcg(raw) {
+  try {
+    const resp = await axios.post(
+      `${ECG_FILTER_URL}/analyze`,
+      { ecg: raw, sample_rate: 250 },
+      { timeout: 2500 }
+    );
+    return resp.data;
+  } catch {
+    return null;
+  }
+}
+
+app.post("/api/ecg", async (req, res) => {
+  const raw = Array.isArray(req.body?.ecg) ? req.body.ecg : [];
+  if (raw.length === 0) return res.status(400).json({ ok: false, error: "ecg array empty" });
+
+  const analysis = await analyzeEcg(raw);
+  const ecg      = analysis?.ecg_filtered || raw;
+
+  const reading = {
+    deviceId:      req.body.deviceId || "esp32-ecg",
+    timestamp:     new Date().toISOString(),
+    ecg,
+    ecg_data:      ecg,
+    quality_score: analysis?.quality_score ?? null,
+    hr: null, spo2: null, sbp: null, dbp: null,
+    ppg: [], pcg: [],
+  };
+
+  io.emit("new_reading", reading);
+  io.emit("newReading",  reading);
+
+  // ── Update best snapshot seen so far ──────────────────────────────────────
+  const entry = {
+    ecg,
+    quality_score: analysis?.quality_score ?? 10,
+    status:        analysis?.status        ?? "poor_signal",
+    analysis:      analysis?.analysis      ?? "Signal received",
+    suggestion:    analysis?.suggestion    ?? "Attach electrodes firmly for a cleaner signal.",
+    hr_estimate:   analysis?.hr_estimate   ?? null,
+    rr_cv:         analysis?.rr_cv         ?? null,
+    n_peaks:       analysis?.n_peaks       ?? 0,
+    timestamp:     reading.timestamp,
+  };
+
+  // Keep the highest-quality batch since the last emit
+  if (!bestSnapshotSoFar || entry.quality_score >= bestSnapshotSoFar.quality_score) {
+    bestSnapshotSoFar = entry;
+  }
+
+  // ── Emit snapshot every 30 s (don't wait for setInterval drift) ───────────
+  const now = Date.now();
+  if (bestSnapshotSoFar && now - lastSnapshotEmitMs >= SNAPSHOT_INTERVAL_MS) {
+    console.log(`📸 ECG snapshot: quality=${bestSnapshotSoFar.quality_score} status=${bestSnapshotSoFar.status} HR=${bestSnapshotSoFar.hr_estimate}`);
+    io.emit("ecg_snapshot", bestSnapshotSoFar);
+    lastSnapshotEmitMs = now;
+    bestSnapshotSoFar  = null;   // reset for next window
+  }
+
+  res.json({ ok: true, samples: ecg.length });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PCG ENDPOINTS
    ═══════════════════════════════════════════════════════════════════════════ */
 app.post("/api/pcg/predict-wav", async (req, res) => {
@@ -230,7 +337,6 @@ app.get("/api/pcg/test-accuracy", async (req, res) => {
   try {
     const PCG_MODEL_URL = process.env.PCG_MODEL_URL;
     if (!PCG_MODEL_URL) return res.status(503).json({ ok: false, error: "PCG_MODEL_URL not set" });
-    const axios    = require("axios");
     const baseUrl  = PCG_MODEL_URL.replace(/\/predict$/, "");
     const response = await axios.get(`${baseUrl}/test-with-labels`, { timeout: 120000 });
     res.json({ ok: true, data: response.data });

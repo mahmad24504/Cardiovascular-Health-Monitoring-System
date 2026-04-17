@@ -24,7 +24,7 @@ MAX30105 particleSensor;
 // -------- WiFi --------
 const char* ssid = "NCIL_Lab";
 const char* password = "ncillab@123";
-const char* serverURL = "http://192.168.0.102:5000/api/readings";
+const char* serverURL = "http://10.7.241.2:5000/api/readings";
 
 // -------- ECG --------
 const int ecgPin = 34;      // AD8232 OUTPUT

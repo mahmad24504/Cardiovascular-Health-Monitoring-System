@@ -25,7 +25,7 @@
 // ========== CONFIGURATION ==========
 const char* ssid = "NUST Central Library";
 const char* password = "Nust@123";
-const char* SERVER_URL = "http://192.168.237.1:5000";  // Change to your server IP (include port!)
+const char* SERVER_URL = "http://10.7.241.2:5000";  // Change to your server IP (include port!)
 const char* DEVICE_ID = "esp32-device-001";
 
 // ========== GLOBAL VARIABLES ==========

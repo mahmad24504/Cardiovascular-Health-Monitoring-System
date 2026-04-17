@@ -25,7 +25,9 @@ const PPG_RECORD_SECS = 120;         // seconds of PPG to capture
 
 let isRecording = false;
 
-function getComPort()  { return process.env.ESP32_COM_PORT || "COM3"; }
+function getComPort()  {
+  return process.env.ESP32_COM_PORT || process.env.ESP_32_COM_PORT || "COM3";
+}
 function getPcgBase()  { return (process.env.PCG_MODEL_URL || "http://localhost:5002/predict").replace(/\/predict$/, ""); }
 function getPpgUrl()   { return process.env.PPG_BP_URL     || "http://localhost:5003"; }
 
@@ -63,6 +65,12 @@ async function recordPCG(io) {
     });
 
     port = await openPort(comPort);
+
+    // Command ESP32 to start PCG streaming mode (new firmware). If the ESP32 is
+    // running older firmware that streams PCG by default, this is harmless.
+    await new Promise((resolve, reject) => {
+      port.write("PCG_REC\n", err => err ? reject(err) : resolve());
+    });
 
     // Discard first 500 ms (buffer stabilisation)
     await new Promise(r => setTimeout(r, 500));

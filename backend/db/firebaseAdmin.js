@@ -11,9 +11,17 @@ const fs    = require("fs");
 const SERVICE_ACCOUNT_PATH = path.join(__dirname, "..", "serviceAccountKey.json");
 
 if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
-  console.error("❌ serviceAccountKey.json not found at:", SERVICE_ACCOUNT_PATH);
-  console.error("   Download it from Firebase Console → Project Settings → Service Accounts");
-  process.exit(1);
+  console.warn("⚠️  Firebase disabled: serviceAccountKey.json not found at:", SERVICE_ACCOUNT_PATH);
+  console.warn("   To enable Firestore, download it from Firebase Console → Project Settings → Service Accounts");
+
+  module.exports = {
+    firestore: null,
+    admin: null,
+    saveSensorReading: async () => null,
+    getPatientReadings: async () => [],
+    getLatestPatientReading: async () => null,
+  };
+  return;
 }
 
 // Only initialize once (guard against hot-reload double init)
