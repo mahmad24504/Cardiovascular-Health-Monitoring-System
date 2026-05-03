@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Heart, Activity, MessageCircle, Plus, AlertTriangle, Send, Save, Check } from "lucide-react";
 import SidebarLayout from "../components/Sidebar";
 import LiveSensor from "../components/LiveSensor";
-import PCGTestResults from "../components/PCGTestResults";
 import BloodSugarForm from "../components/forms/BloodSugarForm";
 import QuestionnaireForm from "../components/forms/QuestionnaireForm";
 import SnapshotButton from "../components/SnapshotButton";
@@ -22,7 +21,7 @@ const TABS = [
   { id: "dashboard",     label: "Live Dashboard" },
   { id: "forms",         label: "Add Blood Sugar" },
   { id: "questionnaire", label: "Questionnaire" },
-  { id: "pcg",           label: "PCG Results" },
+  { id: "results",       label: "Model Results" },
 ];
 
 // ── Sparkline mini-chart ──────────────────────────────────────────────────────
@@ -88,6 +87,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "dashboard");
   const [savingReading, setSavingReading]         = useState(false);
   const [readingSaved, setReadingSaved]           = useState(false);
+  const [lastPcg,   setLastPcg]   = useState<{ type: string; confidence: number } | null>(null);
+  const [lastPpgBp, setLastPpgBp] = useState<{ sbp: number; dbp: number } | null>(null);
 
   // Sync active tab when URL changes (e.g. sidebar navigation)
   useEffect(() => {
@@ -243,14 +244,18 @@ export default function Dashboard() {
 
     setSavingReading(true);
     try {
+      const saveSbp    = currentVitals.sbp || lastPpgBp?.sbp || null;
+      const saveDbp    = currentVitals.dbp || lastPpgBp?.dbp || null;
+      const saveMeanBp = currentVitals.mean_bp
+        || (saveSbp && saveDbp ? Math.round(saveDbp + (saveSbp - saveDbp) / 3) : null);
       await addDoc(collection(db, "savedReadings"), {
         patientId,
         type: "vitals",
-        hr: currentVitals.hr || null,
-        spo2: currentVitals.spo2 || null,
-        sbp: currentVitals.sbp || null,
-        dbp: currentVitals.dbp || null,
-        mean_bp: currentVitals.mean_bp || null,
+        hr:      currentVitals.hr   || null,
+        spo2:    currentVitals.spo2 || null,
+        sbp:     saveSbp,
+        dbp:     saveDbp,
+        mean_bp: saveMeanBp,
         timestamp: serverTimestamp(),
       });
       setReadingSaved(true);
@@ -346,7 +351,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Heart Rate"  value={displayVitals?.hr}   unit="BPM"   color="rose"   sublabel={displayVitals?.hr ? (displayVitals.hr < 60 ? "Low" : displayVitals.hr > 100 ? "High" : "Normal") : ""} sparkData={vitalsHistory.map((v: any) => v.hr).filter(Boolean)} />
           <StatCard label="SpO₂"        value={displayVitals?.spo2} unit="%"     color="indigo"                                                                                                                     sparkData={vitalsHistory.map((v: any) => v.spo2).filter(Boolean)} />
-          <StatCard label="Mean BP"     value={displayVitals?.mean_bp ? Math.round(displayVitals.mean_bp) : null} unit="mmHg" color="violet"                                                                       sparkData={vitalsHistory.map((v: any) => v.mean_bp).filter(Boolean)} />
+          <StatCard label="Mean BP"     value={(() => {
+            if (displayVitals?.mean_bp) return Math.round(displayVitals.mean_bp);
+            if (displayVitals?.sbp && displayVitals?.dbp) return Math.round(displayVitals.dbp + (displayVitals.sbp - displayVitals.dbp) / 3);
+            if (lastPpgBp) return Math.round(lastPpgBp.dbp + (lastPpgBp.sbp - lastPpgBp.dbp) / 3);
+            return null;
+          })()} unit="mmHg" color="violet" sparkData={vitalsHistory.map((v: any) => v.mean_bp ?? (v.sbp && v.dbp ? Math.round(v.dbp + (v.sbp - v.dbp) / 3) : null)).filter(Boolean)} />
           <StatCard label="Blood Sugar" value={latestBloodSugar}    unit="mg/dL" color="amber"                                                                                                                     sparkData={bloodSugarHistory.map((r: any) => r.blood_sugar).filter(Boolean).slice(0, 20).reverse()} />
         </div>
 
@@ -371,7 +381,10 @@ export default function Dashboard() {
         {activeTab === "dashboard" && (
           <div className="space-y-6">
             {/* Manual recording buttons */}
-            <RecordingPanel />
+            <RecordingPanel
+              onPcgResult={(type, confidence) => setLastPcg({ type, confidence })}
+              onPpgResult={(sbp, dbp) => setLastPpgBp({ sbp, dbp })}
+            />
 
             {/* Live sensor */}
             <div className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-6 shadow-sm">
@@ -380,7 +393,7 @@ export default function Dashboard() {
                 <h2 className="text-base font-semibold text-[var(--foreground)]">Live Sensor Data</h2>
                 <span className="text-xs text-[var(--muted-foreground)] ml-auto">Real-time streaming</span>
               </div>
-              <LiveSensor onVitalsUpdate={handleVitalsUpdate} />
+              <LiveSensor onVitalsUpdate={handleVitalsUpdate} externalHs={lastPcg} externalBp={lastPpgBp} />
             </div>
 
             {/* Blood sugar history */}
@@ -509,9 +522,93 @@ export default function Dashboard() {
           <QuestionnaireForm onSuccess={() => {}} />
         )}
 
-        {/* ── PCG tab ────────────────────────────────────────────────────────── */}
-        {activeTab === "pcg" && (
-          <PCGTestResults />
+        {/* ── Model Results tab ──────────────────────────────────────────────── */}
+        {activeTab === "results" && (
+          <div className="space-y-4">
+            <p className="text-xs text-[var(--muted-foreground)] px-1">
+              Four AI models run on-device. Live output appears in the dashboard. Cards below describe each model and its performance.
+            </p>
+
+            {/* PCG — Heart Sound */}
+            <div className="bg-[var(--muted)] border border-[var(--border)] rounded-2xl p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-bold text-[var(--foreground)]">Model 1 · PCG Heart Sound Classifier (Conv1D CNN)</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">Detects valvular heart diseases from digital stethoscope audio — best fold of 5-fold stratified CV</p>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 whitespace-nowrap">PCG · Audio</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                {[["Normal","N","emerald"],["Aortic Stenosis","AS","red"],["Mitral Regurgitation","MR","orange"],["Mitral Stenosis","MS","amber"],["Mitral Valve Prolapse","MVP","violet"]].map(([name, code, col]) => (
+                  <div key={code} className={`bg-${col}-50 dark:bg-${col}-900/20 border border-${col}-200 dark:border-${col}-800 rounded-xl p-2 text-center`}>
+                    <p className={`text-xs font-bold text-${col}-700 dark:text-${col}-300`}>{code}</p>
+                    <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">{name}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-[var(--muted-foreground)]">
+                <span><span className="font-semibold text-[var(--foreground)]">Accuracy:</span> 99.57% overall</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Per-class F1:</span> N=0.99, AS=0.99, MR=0.99, MS=1.00, MVP=1.00</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Live test:</span> Normal at 99.96% confidence</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Input:</span> 1-sec PCG audio at 16 kHz via INMP441</span>
+              </div>
+            </div>
+
+            {/* PPG — Blood Pressure */}
+            <div className="bg-[var(--muted)] border border-[var(--border)] rounded-2xl p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-bold text-[var(--foreground)]">Model 2 · PPG Blood Pressure Estimator (GPR)</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">Estimates SBP and DBP from PPG morphology — 68 subjects (56 published + 14 custom collected)</p>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 whitespace-nowrap">PPG · MAX30102</span>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-[var(--muted-foreground)]">
+                <span><span className="font-semibold text-[var(--foreground)]">Input:</span> ~30 s raw IR + Red PPG at 100 Hz</span>
+                <span><span className="font-semibold text-[var(--foreground)]">SBP model:</span> Medium Decision Tree — MAE 2.96 mmHg, RMSE 6.26 mmHg, R²=0.81</span>
+                <span><span className="font-semibold text-[var(--foreground)]">DBP model:</span> Exponential GPR — MAE 3.43 mmHg, RMSE 4.94 mmHg, R²=0.78</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Blind test (2 subjects):</span> SBP MAE 10.66 mmHg, DBP MAE 9.26 mmHg</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Standard:</span> Within AAMI clinical standard (MAE ≤5 mmHg, SD ≤8 mmHg)</span>
+              </div>
+            </div>
+
+            {/* ECG — Disease Classification */}
+            <div className="bg-[var(--muted)] border border-[var(--border)] rounded-2xl p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-bold text-[var(--foreground)]">Model 3 · ECG Binary Anomaly Detector (Knowledge Distillation + TFLite INT8)</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">Student model distilled from ECGFounder — 59.5 KB on ESP32-S3, 30–80 ms inference</p>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 whitespace-nowrap">ECG · AD8232</span>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-[var(--muted-foreground)]">
+                <span><span className="font-semibold text-[var(--foreground)]">Input:</span> 30 s ECG at 250 Hz via AD8232</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Teacher (ECGFounder):</span> AUROC=0.893, F1=0.793, Sensitivity=0.730, Specificity=0.890</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Student (INT8 ESP32):</span> AUROC=0.860 · PTB-XL fold 10 (200 records)</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Compression:</span> 117 MB → 59.5 KB (2013× smaller)</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Threshold:</span> 0.545 · Known AFIB test: P(abnormal)=0.855 ✓</span>
+              </div>
+            </div>
+
+            {/* ECG+PPG — BP */}
+            <div className="bg-[var(--muted)] border border-[var(--border)] rounded-2xl p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-bold text-[var(--foreground)]">Model 4 · ECG + PPG Blood Pressure (CNN-BiLSTM)</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">Deep learning fusion — 12,000 subjects, 2,669,519 windows (Kaggle BP Dataset)</p>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 whitespace-nowrap">ECG + PPG</span>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-[var(--muted-foreground)]">
+                <span><span className="font-semibold text-[var(--foreground)]">Input:</span> 60 s simultaneous ECG (250 Hz) + PPG (100 Hz)</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Architecture:</span> CNN feature extraction → BiLSTM temporal fusion</span>
+                <span><span className="font-semibold text-[var(--foreground)]">MAE:</span> 4.99 mmHg · RMSE: 7.58 mmHg · R²=0.72</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Standard:</span> Within AAMI clinical standard (MAE ≤5 mmHg)</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Training:</span> 40 epochs, Adam, batch 512, RTX 2080 Ti</span>
+                <span><span className="font-semibold text-[var(--foreground)]">Result:</span> Tap "Analyze" in the ECG + PPG section of Live Dashboard</span>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>

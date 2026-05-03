@@ -4,7 +4,9 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import { Stethoscope, TrendingUp, Mic, Activity } from "lucide-react";
+import { Stethoscope, TrendingUp, Mic, Activity, Save, Check } from "lucide-react";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface RecStatus {
@@ -60,11 +62,19 @@ function bpCategory(sbp: number, dbp: number) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function RecordingPanel() {
+interface RecordingPanelProps {
+  onPcgResult?: (type: string, confidence: number) => void;
+  onPpgResult?: (sbp: number, dbp: number) => void;
+}
+export default function RecordingPanel({ onPcgResult, onPpgResult }: RecordingPanelProps) {
   const [status,      setStatus]      = useState<RecStatus>({ type: null, status: "idle", message: "", duration: 0 });
   const [progress,    setProgress]    = useState<RecProgress | null>(null);
   const [pcgResult,   setPcgResult]   = useState<PCGResult | null>(null);
   const [ppgResult,   setPpgResult]   = useState<PPGResult | null>(null);
+  const [pcgSaved,    setPcgSaved]    = useState(false);
+  const [ppgSaved,    setPpgSaved]    = useState(false);
+  const [pcgSaving,   setPcgSaving]   = useState(false);
+  const [ppgSaving,   setPpgSaving]   = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   const backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:5000";
@@ -84,12 +94,59 @@ export default function RecordingPanel() {
     });
 
     socket.on("recording_result", (d: any) => {
-      if (d.type === "pcg") setPcgResult(d as PCGResult);
-      if (d.type === "ppg") setPpgResult(d as PPGResult);
+      if (d.type === "pcg") {
+        setPcgResult(d as PCGResult);
+        onPcgResult?.(d.heart_sound_type, d.confidence);
+      }
+      if (d.type === "ppg") {
+        setPpgResult(d as PPGResult);
+        onPpgResult?.(d.sbp, d.dbp);
+      }
     });
 
     return () => { socket.disconnect(); };
   }, [backendUrl]);
+
+  // ── Save results to Firestore history ────────────────────────────────────
+  const savePcgToHistory = async () => {
+    if (!pcgResult) return;
+    const patientId = localStorage.getItem("userId");
+    if (!patientId) return;
+    setPcgSaving(true);
+    try {
+      await addDoc(collection(db, "savedReadings"), {
+        patientId,
+        type: "vitals",
+        heart_sound_type: pcgResult.heart_sound_type,
+        heart_sound_confidence: pcgResult.confidence,
+        timestamp: serverTimestamp(),
+      });
+      setPcgSaved(true);
+      setTimeout(() => setPcgSaved(false), 3000);
+    } catch (e) { console.error(e); }
+    finally { setPcgSaving(false); }
+  };
+
+  const savePpgToHistory = async () => {
+    if (!ppgResult) return;
+    const patientId = localStorage.getItem("userId");
+    if (!patientId) return;
+    setPpgSaving(true);
+    try {
+      const map = Math.round(ppgResult.dbp + (ppgResult.sbp - ppgResult.dbp) / 3);
+      await addDoc(collection(db, "savedReadings"), {
+        patientId,
+        type: "vitals",
+        sbp:     Math.round(ppgResult.sbp),
+        dbp:     Math.round(ppgResult.dbp),
+        mean_bp: map,
+        timestamp: serverTimestamp(),
+      });
+      setPpgSaved(true);
+      setTimeout(() => setPpgSaved(false), 3000);
+    } catch (e) { console.error(e); }
+    finally { setPpgSaving(false); }
+  };
 
   // ── Trigger recording via HTTP POST ──────────────────────────────────────
   const startRecording = async (type: "pcg" | "ppg") => {
@@ -315,6 +372,17 @@ export default function RecordingPanel() {
             </div>
           </div>
 
+          {/* Save button */}
+          <button
+            onClick={savePcgToHistory}
+            disabled={pcgSaving || pcgSaved}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition mb-4 ${
+              pcgSaved ? "bg-emerald-500 text-white" : "bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+            }`}
+          >
+            {pcgSaved ? <><Check className="w-4 h-4" />Saved to History</> : pcgSaving ? <>Saving…</> : <><Save className="w-4 h-4" />Save to History</>}
+          </button>
+
           {/* All probabilities */}
           {Object.keys(pcgResult.all_probabilities).length > 0 && (
             <div className="space-y-1.5">
@@ -370,13 +438,22 @@ export default function RecordingPanel() {
               </div>
             </div>
 
-            {/* BP category */}
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${cat.bg}`}>
+            {/* BP category + Save */}
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${cat.bg} mb-3`}>
               <span className={`text-sm font-bold ${cat.color}`}>{cat.label}</span>
               <span className="ml-auto text-xs text-[var(--muted-foreground)]">
                 {ppgResult.model_name ?? "GPR Model"} · {ppgResult.duration_sec?.toFixed(0)}s
               </span>
             </div>
+            <button
+              onClick={savePpgToHistory}
+              disabled={ppgSaving || ppgSaved}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition w-full justify-center ${
+                ppgSaved ? "bg-emerald-500 text-white" : "bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+              }`}
+            >
+              {ppgSaved ? <><Check className="w-4 h-4" />Saved to History</> : ppgSaving ? <>Saving…</> : <><Save className="w-4 h-4" />Save BP to History</>}
+            </button>
           </div>
         );
       })()}

@@ -12,6 +12,7 @@ export interface TrendReading {
   spo2?: number | null;
   sbp?: number | null;
   dbp?: number | null;
+  blood_sugar?: number | null;
   timestamp: any;
   type: string;
   ecg_samples?: number[];
@@ -95,6 +96,85 @@ export function generateHistoricalData(patientId: string, email?: string | null)
       });
     }
   }
+  // ── Specific entries for May 1–4, 2026 ──────────────────────────────────────
+  // patient1 gets elevated BP (consistent with the high-BP recent-week pattern)
+  const p1  = isP1;
+  const MAY = [
+    // May 1
+    { date: [2026,4,1], h: 7,  m: 45, type: "vitals",     hr: 72, spo2: 98.2, sbp: p1?148:118, dbp: p1?94:76  },
+    { date: [2026,4,1], h: 8,  m: 10, type: "blood_sugar", bs: 94,  spo2: 98.1, sbp: p1?147:117, dbp: p1?93:75 },
+    { date: [2026,4,1], h: 12, m: 30, type: "vitals",     hr: 76, spo2: 97.6, sbp: p1?152:122, dbp: p1?97:79  },
+    { date: [2026,4,1], h: 14, m: 20, type: "vitals",     hr: 68, spo2: 97.9, sbp: p1?144:121, dbp: p1?91:78  },
+    { date: [2026,4,1], h: 20, m: 0,  type: "blood_sugar", bs: 138, spo2: 97.7, sbp: p1?150:120, dbp: p1?95:77 },
+    { date: [2026,4,1], h: 21, m: 10, type: "vitals",     hr: 70, spo2: 98.1, sbp: p1?146:119, dbp: p1?93:77  },
+    // May 2
+    { date: [2026,4,2], h: 7,  m: 30, type: "vitals",     hr: 74, spo2: 98.5, sbp: p1?142:116, dbp: p1?89:74  },
+    { date: [2026,4,2], h: 8,  m: 5,  type: "blood_sugar", bs: 89,  spo2: 98.4, sbp: p1?141:115, dbp: p1?88:73 },
+    { date: [2026,4,2], h: 12, m: 0,  type: "vitals",     hr: 78, spo2: 97.7, sbp: p1?156:120, dbp: p1?98:76  },
+    { date: [2026,4,2], h: 13, m: 0,  type: "ecg_recording" },
+    { date: [2026,4,2], h: 19, m: 30, type: "vitals",     hr: 71, spo2: 98.1, sbp: p1?150:119, dbp: p1?95:77  },
+    { date: [2026,4,2], h: 21, m: 15, type: "blood_sugar", bs: 142, spo2: 97.9, sbp: p1?152:121, dbp: p1?96:78 },
+    // May 3
+    { date: [2026,4,3], h: 8,  m: 0,  type: "vitals",     hr: 70, spo2: 98.3, sbp: p1?138:117, dbp: p1?88:75  },
+    { date: [2026,4,3], h: 8,  m: 30, type: "blood_sugar", bs: 91,  spo2: 98.2, sbp: p1?139:116, dbp: p1?87:74 },
+    { date: [2026,4,3], h: 13, m: 15, type: "vitals",     hr: 73, spo2: 97.5, sbp: p1?149:118, dbp: p1?93:75  },
+    { date: [2026,4,3], h: 15, m: 0,  type: "ecg_recording" },
+    { date: [2026,4,3], h: 20, m: 45, type: "vitals",     hr: 75, spo2: 97.8, sbp: p1?145:120, dbp: p1?92:78  },
+    // May 4
+    { date: [2026,4,4], h: 7,  m: 55, type: "vitals",     hr: 73, spo2: 98.4, sbp: p1?141:115, dbp: p1?90:73  },
+    { date: [2026,4,4], h: 8,  m: 20, type: "blood_sugar", bs: 87,  spo2: 98.5, sbp: p1?140:114, dbp: p1?89:72 },
+    { date: [2026,4,4], h: 12, m: 0,  type: "ecg_recording" },
+    { date: [2026,4,4], h: 13, m: 30, type: "vitals",     hr: 77, spo2: 97.4, sbp: p1?153:121, dbp: p1?96:77  },
+    { date: [2026,4,4], h: 20, m: 0,  type: "blood_sugar", bs: 128, spo2: 97.6, sbp: p1?148:119, dbp: p1?94:76 },
+    { date: [2026,4,4], h: 21, m: 0,  type: "vitals",     hr: 69, spo2: 98.0, sbp: p1?147:118, dbp: p1?92:76  },
+  ];
+
+  MAY.forEach((e, i) => {
+    const d = new Date(e.date[0], e.date[1], e.date[2], e.h, e.m, 0, 0);
+    const key = `may-${i}-${patientId.slice(0, 4)}`;
+    if (result.find(r => r.id === key)) return;
+
+    if (e.type === "blood_sugar") {
+      const bse = e as any;
+      result.push({
+        id: key,
+        timestamp: { toDate: () => new Date(d) },
+        type: "blood_sugar",
+        blood_sugar: bse.bs,
+        spo2: bse.spo2 ?? null,
+        sbp:  bse.sbp  ?? null,
+        dbp:  bse.dbp  ?? null,
+        isHistorical: true,
+      });
+    } else if (e.type === "ecg_recording") {
+      const ecgSeed = (seed ^ (i * 2654435761 + 99)) >>> 0;
+      const abnormal = isP1 && rand() > 0.5;
+      result.push({
+        id: key,
+        timestamp: { toDate: () => new Date(d) },
+        type: "ecg_recording",
+        ecg_samples: syntheticEcg(ecgSeed),
+        ecg_result: abnormal ? "ABNORMAL" : "NORMAL",
+        ecg_probability: abnormal
+          ? Math.round((0.55 + rand() * 0.35) * 100) / 100
+          : Math.round((0.06 + rand() * 0.18) * 100) / 100,
+        isHistorical: true,
+      });
+    } else {
+      const v = rand() * 2 - 1;  // ±1 small variation
+      result.push({
+        id: key,
+        hr:   Math.round((e as any).hr   + v),
+        spo2: parseFloat(((e as any).spo2 + v * 0.05).toFixed(1)),
+        sbp:  Math.round((e as any).sbp  + v),
+        dbp:  Math.round((e as any).dbp  + v * 0.5),
+        timestamp: { toDate: () => new Date(d) },
+        type: "vitals",
+        isHistorical: true,
+      });
+    }
+  });
+
   return result;
 }
 

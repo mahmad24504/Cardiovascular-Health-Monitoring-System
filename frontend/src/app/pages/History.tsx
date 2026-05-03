@@ -10,10 +10,6 @@ import { TrendCharts, EcgWave, generateHistoricalData, TrendReading } from "../c
 
 interface SavedReading extends TrendReading {
   mean_bp?: number | null;
-  blood_sugar?: number | null;
-  ecg_result?: string | null;
-  ecg_probability?: number | null;
-  ecg_windows?: any[] | null;
 }
 
 function CompactCalendar({
@@ -159,9 +155,12 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
   }
 
   if (reading.type === "blood_sugar") {
+    const spo2Color2 = (v: number) => v < 90 ? "text-red-500" : v < 95 ? "text-blue-500" : "text-emerald-500";
+    const bpColor2   = (sbp: number, dbp: number) =>
+      sbp >= 130 || dbp >= 85 ? "text-red-500" : sbp < 90 || dbp < 60 ? "text-blue-500" : "text-emerald-500";
     return (
       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-800">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center">
               <Droplets className="w-3.5 h-3.5 text-white" />
@@ -172,6 +171,20 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
             </div>
           </div>
           <p className="text-[10px] text-[var(--muted-foreground)]">{time}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-amber-200 dark:border-amber-700 text-center">
+          <div>
+            <p className="text-[10px] text-[var(--muted-foreground)]">SpO₂</p>
+            <p className={`text-sm font-bold ${reading.spo2 ? spo2Color2(reading.spo2) : "text-slate-300"}`}>
+              {reading.spo2 ? `${reading.spo2}%` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-[var(--muted-foreground)]">BP</p>
+            <p className={`text-sm font-bold ${reading.sbp && reading.dbp ? bpColor2(reading.sbp, reading.dbp) : "text-slate-300"}`}>
+              {reading.sbp && reading.dbp ? `${reading.sbp}/${reading.dbp}` : "—"} <span className="text-[9px] font-normal text-[var(--muted-foreground)]">mmHg</span>
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -195,27 +208,27 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
         <p className="text-[10px] text-[var(--muted-foreground)]">{time}</p>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        {reading.hr && (
-          <div>
-            <p className="text-[10px] text-[var(--muted-foreground)]">HR</p>
-            <p className={`text-base font-bold ${hrColor(reading.hr)}`}>{reading.hr}</p>
-            <p className="text-[9px] text-[var(--muted-foreground)]">BPM</p>
-          </div>
-        )}
-        {reading.spo2 && (
-          <div>
-            <p className="text-[10px] text-[var(--muted-foreground)]">SpO₂</p>
-            <p className={`text-base font-bold ${spo2Color(reading.spo2)}`}>{reading.spo2}</p>
-            <p className="text-[9px] text-[var(--muted-foreground)]">%</p>
-          </div>
-        )}
-        {reading.sbp && reading.dbp && (
-          <div>
-            <p className="text-[10px] text-[var(--muted-foreground)]">BP</p>
-            <p className={`text-sm font-bold ${bpColor(reading.sbp, reading.dbp)}`}>{reading.sbp}/{reading.dbp}</p>
-            <p className="text-[9px] text-[var(--muted-foreground)]">mmHg</p>
-          </div>
-        )}
+        <div>
+          <p className="text-[10px] text-[var(--muted-foreground)]">HR</p>
+          <p className={`text-base font-bold ${reading.hr ? hrColor(reading.hr) : "text-slate-300"}`}>
+            {reading.hr ?? "—"}
+          </p>
+          <p className="text-[9px] text-[var(--muted-foreground)]">BPM</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[var(--muted-foreground)]">SpO₂</p>
+          <p className={`text-base font-bold ${reading.spo2 ? spo2Color(reading.spo2) : "text-slate-300"}`}>
+            {reading.spo2 ?? "—"}
+          </p>
+          <p className="text-[9px] text-[var(--muted-foreground)]">%</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[var(--muted-foreground)]">BP</p>
+          <p className={`text-sm font-bold ${reading.sbp && reading.dbp ? bpColor(reading.sbp, reading.dbp) : "text-slate-300"}`}>
+            {reading.sbp && reading.dbp ? `${reading.sbp}/${reading.dbp}` : "—"}
+          </p>
+          <p className="text-[9px] text-[var(--muted-foreground)]">mmHg</p>
+        </div>
       </div>
     </div>
   );
@@ -244,7 +257,8 @@ export default function History() {
       setUserEmail(user.email);
       const pid = user.uid;
 
-      const q1 = query(collection(db, "savedReadings"), where("patientId", "==", pid), orderBy("timestamp", "desc"));
+      // No orderBy — avoids composite index requirement; sort in JS
+      const q1 = query(collection(db, "savedReadings"), where("patientId", "==", pid));
       unsubs.push(onSnapshot(q1, snap => {
         const data: SavedReading[] = [];
         snap.forEach(d => data.push({ id: d.id, ...d.data() } as SavedReading));
@@ -259,7 +273,7 @@ export default function History() {
         setLoading(false);
       }));
 
-      const q2 = query(collection(db, "bloodSugarReadings"), where("patientId", "==", pid), orderBy("timestamp", "desc"));
+      const q2 = query(collection(db, "bloodSugarReadings"), where("patientId", "==", pid));
       unsubs.push(onSnapshot(q2, snap => {
         const bs: SavedReading[] = [];
         snap.forEach(d => bs.push({ id: d.id, ...d.data(), type: "blood_sugar" } as SavedReading));
