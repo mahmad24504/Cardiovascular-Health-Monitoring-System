@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { Heart } from "lucide-react";
 import { auth, db } from "../../firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDocFromServer, collection, query, where, getDocs } from "firebase/firestore";
+
+// Import assets
+import backgroundImg from "../assets/background.png";
+import logoImg from "../assets/cardiotrix-logo.png";
 
 interface LoginProps {
   onLogin: () => void;
@@ -108,29 +111,44 @@ export default function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
-      <form className="relative bg-[var(--card)] p-8 rounded-xl shadow-sm w-full max-w-md border border-[var(--border)]" onSubmit={handleLogin}>
-        <div className="flex justify-center mb-6">
-          <div className="p-4 bg-[var(--primary)] rounded-full">
-            <Heart className="w-10 h-10 text-white" fill="white" />
-          </div>
+    <div
+      className="min-h-screen flex items-center justify-center bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url(${backgroundImg})` }}
+    >
+      {/* Dark overlay for better readability */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      <form className="relative z-10 p-8 w-full max-w-md" onSubmit={handleLogin}>
+        {/* Logo at top - bigger with heartbeat animation */}
+        <div className="flex justify-center mb-8">
+          <img
+            src={logoImg}
+            alt="CardioTrix Logo"
+            className="h-36 w-auto object-contain drop-shadow-2xl animate-heartbeat"
+            style={{
+              animation: "heartbeat 1.5s ease-in-out infinite"
+            }}
+          />
+          <style>{`
+            @keyframes heartbeat {
+              0%, 100% { transform: scale(1); }
+              14% { transform: scale(1.08); }
+              28% { transform: scale(1); }
+              42% { transform: scale(1.05); }
+              56% { transform: scale(1); }
+            }
+          `}</style>
         </div>
-        
-        <h1 className="text-3xl font-bold mb-2 text-center text-[var(--foreground)]">
-          CardioMonitor
-        </h1>
-        <p className="text-sm text-[var(--muted-foreground)] text-center mb-6">
-          Cardiovascular Health Monitoring System
-        </p>
-        
+
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 rounded">
-            <p className="text-red-700 text-sm">{error}</p>
+          <div className="mb-4 p-3 bg-red-500/90 border-l-4 border-red-300 rounded backdrop-blur-sm">
+            <p className="text-white text-sm">{error}</p>
           </div>
         )}
 
+        {/* Only inputs are white */}
         <input
-          className="w-full p-3 border border-[var(--border)] rounded-lg mb-3 focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--primary)] transition bg-[var(--input-background)]"
+          className="w-full p-3 border-0 rounded-xl mb-3 focus:ring-2 focus:ring-rose-500 transition bg-white text-slate-800 placeholder-slate-400 shadow-lg"
           placeholder="Email Address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -138,35 +156,35 @@ export default function Login({ onLogin }: LoginProps) {
           required
         />
         <input
-          className="w-full p-3 border border-[var(--border)] rounded-lg mb-4 focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--primary)] transition bg-[var(--input-background)]"
+          className="w-full p-3 border-0 rounded-xl mb-4 focus:ring-2 focus:ring-rose-500 transition bg-white text-slate-800 placeholder-slate-400 shadow-lg"
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        
-        <div className="flex items-center gap-2 mb-4">
+
+        <div className="flex items-center gap-2 mb-5">
           <input
             id="rememberMe"
             type="checkbox"
             checked={rememberMe}
             onChange={e => setRememberMe(e.target.checked)}
-            className="w-4 h-4 accent-[var(--primary)] cursor-pointer"
+            className="w-4 h-4 accent-rose-500 cursor-pointer"
           />
-          <label htmlFor="rememberMe" className="text-sm text-[var(--muted-foreground)] cursor-pointer select-none">
+          <label htmlFor="rememberMe" className="text-sm text-white cursor-pointer select-none drop-shadow">
             Remember me
           </label>
         </div>
 
-        <button className="w-full py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-orange-600 transition shadow-sm">
+        <button className="w-full py-3 bg-gradient-to-r from-rose-500 to-rose-600 text-white rounded-xl font-semibold hover:from-rose-600 hover:to-rose-700 transition shadow-lg shadow-rose-500/30">
           Sign In
         </button>
 
-        <p className="text-center mt-6 text-[var(--muted-foreground)]">
+        <p className="text-center mt-6 text-white drop-shadow">
           Don't have an account?{" "}
           <span
-            className="text-[var(--primary)] cursor-pointer font-semibold hover:text-orange-600 hover:underline"
+            className="text-rose-300 cursor-pointer font-semibold hover:text-rose-200 hover:underline"
             onClick={() => navigate("/signup")}
           >
             Sign Up

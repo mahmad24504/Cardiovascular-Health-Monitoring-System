@@ -212,22 +212,21 @@ app.get("/api/patient-readings/:patientId/latest", async (req, res) => {
    MANUAL RECORDING ENDPOINTS  (dashboard buttons → USB serial → ML models)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// POST /api/record/pcg  — record 60 s of heart sound via INMP441, classify
+// POST /api/record/pcg  — record 15 s of heart sound via INMP441, classify
 app.post("/api/record/pcg", (_req, res) => {
   if (isRecordingActive()) {
     return res.status(409).json({ ok: false, error: "Another recording is already in progress" });
   }
-  res.json({ ok: true, message: "PCG recording started", duration: 60 });
-  // Run async — results pushed via Socket.IO
+  res.json({ ok: true, message: "PCG recording started", duration: 15 });
   recordPCG(io).catch(err => console.error("❌ PCG recording:", err.message));
 });
 
-// POST /api/record/ppg  — send PPG_REC, record 120 s of IR/Red, predict BP
+// POST /api/record/ppg  — send PPG_REC, record 45 s of IR/Red, predict BP
 app.post("/api/record/ppg", (_req, res) => {
   if (isRecordingActive()) {
     return res.status(409).json({ ok: false, error: "Another recording is already in progress" });
   }
-  res.json({ ok: true, message: "PPG recording started", duration: 120 });
+  res.json({ ok: true, message: "PPG recording started", duration: 45 });
   recordPPG(io).catch(err => console.error("❌ PPG recording:", err.message));
 });
 

@@ -112,63 +112,107 @@ export default function RecordingPanel() {
     <div className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-6 shadow-sm space-y-5">
 
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-violet-500" />
-        <h2 className="text-base font-semibold text-[var(--foreground)]">Manual Recording</h2>
-        <span className="text-xs text-[var(--muted-foreground)] ml-auto">
-          ESP32 connected via USB
-        </span>
+      <div className="text-center">
+        <h2 className="text-base font-bold text-[var(--foreground)]">Manual Recording</h2>
+        <p className="text-xs text-[var(--muted-foreground)] mt-0.5">Tap a button to start — ESP32 via USB</p>
       </div>
 
-      {/* Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* PCG button */}
-        <button
-          onClick={() => startRecording("pcg")}
-          disabled={isRecording}
-          className={`flex items-center gap-3 px-5 py-4 rounded-2xl border-2 font-semibold text-sm transition-all
-            ${isRecording && activeType === "pcg"
-              ? "border-violet-400 bg-violet-50 text-violet-700 cursor-not-allowed"
-              : isRecording
-              ? "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)] cursor-not-allowed opacity-50"
-              : "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:border-violet-400 cursor-pointer"
-            }`}
-        >
-          <div className="p-2 bg-violet-100 rounded-xl flex-shrink-0">
-            <Stethoscope className="w-5 h-5 text-violet-600" />
-          </div>
-          <div className="text-left">
-            <p className="font-semibold">Record Heart Sound</p>
-            <p className="text-xs font-normal text-violet-500 mt-0.5">PCG · 60 seconds · INMP441</p>
-          </div>
-          {isRecording && activeType === "pcg" && (
-            <div className="ml-auto w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-          )}
-        </button>
+      {/* Circular Buttons */}
+      <div className="flex justify-center gap-12 py-2">
 
-        {/* PPG button */}
-        <button
-          onClick={() => startRecording("ppg")}
-          disabled={isRecording}
-          className={`flex items-center gap-3 px-5 py-4 rounded-2xl border-2 font-semibold text-sm transition-all
-            ${isRecording && activeType === "ppg"
-              ? "border-teal-400 bg-teal-50 text-teal-700 cursor-not-allowed"
-              : isRecording
-              ? "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)] cursor-not-allowed opacity-50"
-              : "border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 hover:border-teal-400 cursor-pointer"
-            }`}
-        >
-          <div className="p-2 bg-teal-100 rounded-xl flex-shrink-0">
-            <TrendingUp className="w-5 h-5 text-teal-600" />
+        {/* ── PCG — Heart Sound ────────────────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={() => startRecording("pcg")}
+            disabled={isRecording}
+            className={`relative w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all duration-200 shadow-xl focus:outline-none
+              ${isRecording && activeType === "pcg"
+                ? "bg-gradient-to-br from-violet-400 to-purple-500 scale-95 shadow-violet-300/60 cursor-not-allowed"
+                : isRecording
+                ? "bg-gradient-to-br from-slate-300 to-slate-400 opacity-40 cursor-not-allowed"
+                : "bg-gradient-to-br from-violet-500 to-purple-600 hover:scale-110 hover:shadow-violet-400/70 cursor-pointer active:scale-95"
+              }`}
+          >
+            {/* Heart + ECG waveform icon */}
+            <svg viewBox="0 0 56 56" className="w-14 h-14" fill="none">
+              {/* Heart */}
+              <path d="M28 45C28 45 7 32 7 18.5C7 11.5 12.5 6.5 19 6.5C23 6.5 26.5 8.5 28 11.5C29.5 8.5 33 6.5 37 6.5C43.5 6.5 49 11.5 49 18.5C49 32 28 45 28 45Z"
+                fill="white" opacity="0.92"/>
+              {/* ECG / heartbeat line across heart */}
+              <polyline
+                points="10,26 16,26 19,19 22,33 25,22 28,26 31,26 34,22 37,30 40,26 46,26"
+                stroke="#7c3aed" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {/* REC dot — pulses when recording */}
+            <span className={`absolute top-2.5 right-2.5 w-3.5 h-3.5 rounded-full border-2 border-white
+              ${isRecording && activeType === "pcg" ? "bg-red-400 animate-ping" : "bg-red-500"}`} />
+            {isRecording && activeType === "pcg" && (
+              <div className="absolute bottom-3 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+          </button>
+          {/* Label */}
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+              <span className="text-[10px] font-extrabold text-red-500 uppercase tracking-widest">REC</span>
+            </div>
+            <p className="text-sm font-bold text-[var(--foreground)]">Heart Sound</p>
+            <p className="text-xs text-violet-500 font-medium">PCG · 15 seconds</p>
+            <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">Uses INMP441 mic</p>
           </div>
-          <div className="text-left">
-            <p className="font-semibold">Record Blood Pressure</p>
-            <p className="text-xs font-normal text-teal-500 mt-0.5">PPG · 120 seconds · MAX30102</p>
+        </div>
+
+        {/* ── PPG — Blood Pressure ─────────────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={() => startRecording("ppg")}
+            disabled={isRecording}
+            className={`relative w-32 h-32 rounded-full flex flex-col items-center justify-center transition-all duration-200 shadow-xl focus:outline-none
+              ${isRecording && activeType === "ppg"
+                ? "bg-gradient-to-br from-teal-400 to-cyan-500 scale-95 shadow-teal-300/60 cursor-not-allowed"
+                : isRecording
+                ? "bg-gradient-to-br from-slate-300 to-slate-400 opacity-40 cursor-not-allowed"
+                : "bg-gradient-to-br from-teal-500 to-cyan-600 hover:scale-110 hover:shadow-teal-400/70 cursor-pointer active:scale-95"
+              }`}
+          >
+            {/* Blood pressure cuff icon */}
+            <svg viewBox="0 0 56 56" className="w-14 h-14" fill="none">
+              {/* Gauge circle */}
+              <circle cx="28" cy="13" r="8" fill="white" opacity="0.9"/>
+              {/* Gauge arc (scale) */}
+              <path d="M21.5 17 A7 7 0 0 1 34.5 17" stroke="#0d9488" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+              {/* Gauge needle */}
+              <line x1="28" y1="13" x2="32" y2="9" stroke="#0d9488" strokeWidth="1.8" strokeLinecap="round"/>
+              <circle cx="28" cy="13" r="1.5" fill="#0d9488"/>
+              {/* Tube from gauge down to cuff */}
+              <line x1="28" y1="21" x2="28" y2="27" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              {/* Cuff band */}
+              <rect x="9" y="27" width="38" height="15" rx="7.5" fill="white" opacity="0.92"/>
+              {/* Cuff bar chart (pressure reading) */}
+              <rect x="16" y="31" width="4" height="7" rx="1.5" fill="#0d9488" opacity="0.45"/>
+              <rect x="23" y="29" width="4" height="9" rx="1.5" fill="#0d9488" opacity="0.75"/>
+              <rect x="30" y="31" width="4" height="7" rx="1.5" fill="#0d9488" opacity="0.55"/>
+              <rect x="37" y="33" width="4" height="5" rx="1.5" fill="#0d9488" opacity="0.4"/>
+            </svg>
+            {/* REC dot */}
+            <span className={`absolute top-2.5 right-2.5 w-3.5 h-3.5 rounded-full border-2 border-white
+              ${isRecording && activeType === "ppg" ? "bg-red-400 animate-ping" : "bg-red-500"}`} />
+            {isRecording && activeType === "ppg" && (
+              <div className="absolute bottom-3 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+          </button>
+          {/* Label */}
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+              <span className="text-[10px] font-extrabold text-red-500 uppercase tracking-widest">REC</span>
+            </div>
+            <p className="text-sm font-bold text-[var(--foreground)]">Blood Pressure</p>
+            <p className="text-xs text-teal-500 font-medium">PPG · 45 seconds</p>
+            <p className="text-[10px] text-[var(--muted-foreground)] mt-0.5">Uses MAX30102 sensor</p>
           </div>
-          {isRecording && activeType === "ppg" && (
-            <div className="ml-auto w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-          )}
-        </button>
+        </div>
+
       </div>
 
       {/* Recording progress */}

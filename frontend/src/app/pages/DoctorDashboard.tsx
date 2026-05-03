@@ -4,15 +4,23 @@
 
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Users, Activity, AlertTriangle, RefreshCw, MessageCircle, Bell, Stethoscope } from "lucide-react";
+import { Users, Activity, AlertTriangle, RefreshCw, MessageCircle, Bell, Stethoscope, Smartphone } from "lucide-react";
 import { collection, query, getDocs, where, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
 import SidebarLayout from "../components/Sidebar";
 import LiveSensor from "../components/LiveSensor";
+import { TrendCharts, EcgWave, generateHistoricalData, TrendReading } from "../components/TrendCharts";
 import io from "socket.io-client";
 
 const SOCKET_URL   = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 const BACKEND_URL  = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+
+const toWaUrl = (phone?: string): string | null => {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  const intl   = digits.startsWith("92") ? digits : "92" + digits.replace(/^0/, "");
+  return `https://wa.me/${intl}`;
+};
 
 const HS_LABELS: Record<string, string> = {
   N: "Normal", AS: "Aortic Stenosis", MR: "Mitral Regurgitation",
@@ -25,8 +33,9 @@ export default function DoctorDashboard() {
 
   const [patients,          setPatients]          = useState<any[]>([]);
   const [selectedPatient,   setSelectedPatient]   = useState<any>(null);
-  const [patientVitals,     setPatientVitals]     = useState<any>({});       // live socket vitals
-  const [patientHistory,    setPatientHistory]    = useState<any[]>([]);     // Firestore history
+  const [patientVitals,     setPatientVitals]     = useState<any>({});
+  const [patientHistory,    setPatientHistory]    = useState<any[]>([]);
+  const [savedReadings,     setSavedReadings]     = useState<TrendReading[]>([]);
   const [historyLoading,    setHistoryLoading]    = useState(false);
   const [emergencyAlerts,   setEmergencyAlerts]   = useState<any[]>([]);
   const [questionnaire,     setQuestionnaire]     = useState<any>(null);
@@ -51,9 +60,10 @@ export default function DoctorDashboard() {
 
   // Load questionnaire when patient changes
   useEffect(() => {
-    if (!selectedPatient?.id) { setQuestionnaire(null); setPatientHistory([]); return; }
+    if (!selectedPatient?.id) { setQuestionnaire(null); setPatientHistory([]); setSavedReadings([]); return; }
     loadQuestionnaire(selectedPatient.id);
     loadPatientHistory(selectedPatient.id);
+    loadSavedReadings(selectedPatient.id, selectedPatient.email);
   }, [selectedPatient]);
 
   const loadPatients = async () => {
@@ -82,6 +92,22 @@ export default function DoctorDashboard() {
       setQuestionnaire(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
     } catch { setQuestionnaire(null); }
     finally { setQLoading(false); }
+  };
+
+  const loadSavedReadings = (patientId: string, email?: string) => {
+    setSavedReadings([]);
+    const q = query(
+      collection(db, "savedReadings"),
+      where("patientId", "==", patientId),
+      orderBy("timestamp", "desc"),
+      limit(100)
+    );
+    onSnapshot(q, snap => {
+      const data: TrendReading[] = [];
+      snap.forEach(d => data.push({ id: d.id, ...d.data() } as TrendReading));
+      const historical = generateHistoricalData(patientId, email);
+      setSavedReadings([...historical, ...data]);
+    });
   };
 
   // Fetch patient's sensor reading history from Firestore via backend
@@ -270,9 +296,25 @@ export default function DoctorDashboard() {
                           <p className="text-xs text-[var(--muted-foreground)] truncate max-w-[130px]">{patient.email}</p>
                         </div>
                       </div>
-                      {unread > 0 && (
-                        <span className="w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unread}</span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {patient.phone && (
+                          <a
+                            href={toWaUrl(patient.phone)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            title="Open WhatsApp"
+                            className="w-6 h-6 rounded-full bg-[#25D366] flex items-center justify-center hover:bg-[#1ebe5d] transition flex-shrink-0"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                          </a>
+                        )}
+                        {unread > 0 && (
+                          <span className="w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unread}</span>
+                        )}
+                      </div>
                     </div>
                     {vitals && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -309,18 +351,35 @@ export default function DoctorDashboard() {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => navigate(`/doctor-chat/${selectedPatient.id}`)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-rose-500 text-white rounded-xl font-semibold text-sm hover:bg-rose-600 transition shadow-sm"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      Chat
-                      {(unreadByPatient[selectedPatient.id] || 0) > 0 && (
-                        <span className="w-5 h-5 bg-white text-rose-600 text-xs rounded-full flex items-center justify-center font-bold">
-                          {unreadByPatient[selectedPatient.id]}
-                        </span>
+                    <div className="flex items-center gap-2">
+                      {toWaUrl(selectedPatient.phone) && (
+                        <a
+                          href={toWaUrl(selectedPatient.phone)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`WhatsApp ${selectedPatient.name}`}
+                          className="flex items-center gap-2 px-4 py-2.5 bg-[#25D366] text-white rounded-xl font-semibold text-sm hover:bg-[#1ebe5d] transition shadow-sm"
+                        >
+                          {/* WhatsApp logo */}
+                          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                          WhatsApp
+                        </a>
                       )}
-                    </button>
+                      <button
+                        onClick={() => navigate(`/doctor-chat/${selectedPatient.id}`)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-rose-500 text-white rounded-xl font-semibold text-sm hover:bg-rose-600 transition shadow-sm"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Chat
+                        {(unreadByPatient[selectedPatient.id] || 0) > 0 && (
+                          <span className="w-5 h-5 bg-white text-rose-600 text-xs rounded-full flex items-center justify-center font-bold">
+                            {unreadByPatient[selectedPatient.id]}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Latest live vitals snapshot */}
@@ -367,47 +426,94 @@ export default function DoctorDashboard() {
                   </div>
                 )}
 
-                {/* Firestore history */}
+                {/* History — trend charts + ECG recordings */}
                 {activeView === "history" && (
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-semibold text-[var(--foreground)]">Vitals History</h3>
-                      <button onClick={() => loadPatientHistory(selectedPatient.id)} className="text-xs text-rose-500 hover:underline flex items-center gap-1">
-                        <RefreshCw className="w-3 h-3" /> Refresh
-                      </button>
+                  <div className="space-y-4">
+                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-base font-semibold text-[var(--foreground)]">Patient History</h3>
+                        <button onClick={() => { loadPatientHistory(selectedPatient.id); loadSavedReadings(selectedPatient.id, selectedPatient.email); }}
+                          className="text-xs text-rose-500 hover:underline flex items-center gap-1">
+                          <RefreshCw className="w-3 h-3" /> Refresh
+                        </button>
+                      </div>
+                      {savedReadings.length > 0 ? (
+                        <TrendCharts readings={savedReadings} />
+                      ) : (
+                        <div className="text-center py-8">
+                          <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-sm text-[var(--muted-foreground)]">Loading patient history…</p>
+                        </div>
+                      )}
                     </div>
-                    {historyLoading ? (
-                      <div className="text-center py-8">
-                        <div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                        <p className="text-xs text-[var(--muted-foreground)]">Loading history…</p>
-                      </div>
-                    ) : patientHistory.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p className="text-sm text-[var(--muted-foreground)]">No readings yet</p>
-                        <p className="text-xs text-slate-400 mt-1">Readings appear here after the patient opens their dashboard and the ESP32 sends data.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {patientHistory.map((r: any, i: number) => (
-                          <div key={r.id || i} className="p-3 bg-[var(--muted)] rounded-xl border border-[var(--border)]">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs text-[var(--muted-foreground)]">
-                                {r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}
-                              </p>
-                              {r.heart_rate_type && (
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                  r.heart_rate_type === "N" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                                }`}>{r.heart_rate_type} — {HS_LABELS[r.heart_rate_type] || r.heart_rate_type}</span>
+
+                    {/* ECG Recordings list */}
+                    {savedReadings.filter(r => r.type === "ecg_recording").length > 0 && (
+                      <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm p-5">
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] mb-3">ECG Recordings</h4>
+                        <div className="space-y-3">
+                          {savedReadings.filter(r => r.type === "ecg_recording" && r.ecg_samples?.length).map((r: any) => (
+                            <div key={r.id} className="bg-slate-900 rounded-xl p-3 border border-slate-700 space-y-2">
+                              <div className="flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs font-semibold text-emerald-400">ECG Recording</p>
+                                  {r.ecg_result && (
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      r.ecg_result === "NORMAL" ? "bg-emerald-900 text-emerald-300" : "bg-red-900 text-red-300"
+                                    }`}>
+                                      {r.ecg_result === "NORMAL" ? "✓ Normal" : "⚠ Abnormal"}
+                                      {r.ecg_probability != null && ` · ${(r.ecg_probability * 100).toFixed(0)}%`}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400">
+                                  {(r.timestamp?.toDate ? r.timestamp.toDate() : new Date(r.timestamp)).toLocaleString()}
+                                  {" · "}{r.ecg_samples!.length} samples · scroll →
+                                </p>
+                              </div>
+                              {r.ecg_windows?.length > 1 && (
+                                <div className="flex gap-1.5 flex-wrap">
+                                  {r.ecg_windows.map((w: any) => (
+                                    <span key={w.window} className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                                      w.decision === "NORMAL" ? "bg-emerald-900 text-emerald-400" : "bg-red-900 text-red-400"
+                                    }`}>
+                                      {w.t_start}s: {w.decision}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
+                              <EcgWave samples={r.ecg_samples!} />
                             </div>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              <div><span className="text-[var(--muted-foreground)]">HR </span><span className="font-semibold">{r.hr ?? "—"} bpm</span></div>
-                              <div><span className="text-[var(--muted-foreground)]">SpO₂ </span><span className="font-semibold">{r.spo2 ?? "—"}%</span></div>
-                              <div><span className="text-[var(--muted-foreground)]">BP </span><span className="font-semibold">{r.sbp && r.dbp ? `${r.sbp}/${r.dbp}` : "—"}</span></div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Raw readings table */}
+                    {patientHistory.length > 0 && (
+                      <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm p-5">
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] mb-3">Sensor Readings Log</h4>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {patientHistory.map((r: any, i: number) => (
+                            <div key={r.id || i} className="p-3 bg-[var(--muted)] rounded-xl border border-[var(--border)]">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs text-[var(--muted-foreground)]">
+                                  {r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}
+                                </p>
+                                {r.heart_rate_type && (
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                    r.heart_rate_type === "N" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                  }`}>{r.heart_rate_type} — {HS_LABELS[r.heart_rate_type] || r.heart_rate_type}</span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div><span className="text-[var(--muted-foreground)]">HR </span><span className="font-semibold">{r.hr ?? "—"} bpm</span></div>
+                                <div><span className="text-[var(--muted-foreground)]">SpO₂ </span><span className="font-semibold">{r.spo2 ?? "—"}%</span></div>
+                                <div><span className="text-[var(--muted-foreground)]">BP </span><span className="font-semibold">{r.sbp && r.dbp ? `${r.sbp}/${r.dbp}` : "—"}</span></div>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

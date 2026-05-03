@@ -17,6 +17,8 @@ export default function QuestionnaireForm({ onSuccess }: QuestionnaireFormProps)
     exercise_frequency: "none",
     family_history: false,
     current_medications: "",
+    temperature: "",
+    weight: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -84,7 +86,7 @@ export default function QuestionnaireForm({ onSuccess }: QuestionnaireFormProps)
         <div className="border border-[var(--border)] rounded-xl p-5 bg-[var(--muted)]">
           <h3 className="font-medium text-[var(--foreground)] mb-4">Current Medical Conditions</h3>
           <div className="space-y-3">
-            {[
+            {[ 
               { name: "has_hypertension", label: "Hypertension (High Blood Pressure)" },
               { name: "has_diabetes", label: "Diabetes" },
               { name: "has_heart_disease", label: "Heart Disease" },
@@ -152,6 +154,42 @@ export default function QuestionnaireForm({ onSuccess }: QuestionnaireFormProps)
             />
             <span className="text-[var(--foreground)] font-medium">Family history of cardiovascular disease</span>
           </label>
+        </div>
+
+        {/* Temperature Dropdown */}
+        <div>
+          <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
+            Temperature (°C)
+          </label>
+          <select
+            name="temperature"
+            value={formData.temperature}
+            onChange={handleChange}
+            className="w-full p-3 border border-[var(--border)] rounded-lg focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--primary)] transition bg-[var(--input-background)]"
+          >
+            <option value="">Select Temperature</option>
+            <option value="normal">Normal</option>
+            <option value="fever">Fever</option>
+          </select>
+        </div>
+
+        {/* Weight Dropdown */}
+        <div>
+          <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
+            Weight (kg)
+          </label>
+          <select
+            name="weight"
+            value={formData.weight}
+            onChange={handleChange}
+            className="w-full p-3 border border-[var(--border)] rounded-lg focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--primary)] transition bg-[var(--input-background)]"
+          >
+            <option value="">Select Weight</option>
+            <option value="underweight">Underweight</option>
+            <option value="normal">Normal</option>
+            <option value="overweight">Overweight</option>
+            <option value="obese">Obese</option>
+          </select>
         </div>
 
         {/* Current Medications */}

@@ -1,7 +1,7 @@
 // src/app/pages/Dashboard.tsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Heart, Activity, MessageCircle, Plus, AlertTriangle, Send } from "lucide-react";
+import { Heart, Activity, MessageCircle, Plus, AlertTriangle, Send, Save, Check } from "lucide-react";
 import SidebarLayout from "../components/Sidebar";
 import LiveSensor from "../components/LiveSensor";
 import PCGTestResults from "../components/PCGTestResults";
@@ -9,6 +9,7 @@ import BloodSugarForm from "../components/forms/BloodSugarForm";
 import QuestionnaireForm from "../components/forms/QuestionnaireForm";
 import SnapshotButton from "../components/SnapshotButton";
 import RecordingPanel from "../components/RecordingPanel";
+import ChatBot from "../components/ChatBot";
 import {
   addDoc, collection, serverTimestamp, query, orderBy,
   limit, onSnapshot, where, doc, getDoc
@@ -19,7 +20,7 @@ import { db, auth } from "../../firebase";
 // ── Tab definition ────────────────────────────────────────────────────────────
 const TABS = [
   { id: "dashboard",     label: "Live Dashboard" },
-  { id: "forms",         label: "Blood Sugar" },
+  { id: "forms",         label: "Add Blood Sugar" },
   { id: "questionnaire", label: "Questionnaire" },
   { id: "pcg",           label: "PCG Results" },
 ];
@@ -75,6 +76,7 @@ export default function Dashboard() {
   const [searchParams]    = useSearchParams();
   const [profile, setProfile]               = useState({ name: "", age: "", sex: "" });
   const [currentVitals, setCurrentVitals]   = useState<any>(null);
+  const [lastKnownVitals, setLastKnownVitals] = useState<any>(null);
   const [latestBloodSugar, setLatestBloodSugar] = useState<number | null>(null);
   const [bloodSugarHistory, setBloodSugarHistory] = useState<any[]>([]);
   const [vitalsHistory, setVitalsHistory]           = useState<any[]>([]);
@@ -84,6 +86,8 @@ export default function Dashboard() {
   const [sendingEmergency, setSendingEmergency]   = useState(false);
   const [emergencySent, setEmergencySent]         = useState(false);
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "dashboard");
+  const [savingReading, setSavingReading]         = useState(false);
+  const [readingSaved, setReadingSaved]           = useState(false);
 
   // Sync active tab when URL changes (e.g. sidebar navigation)
   useEffect(() => {
@@ -96,6 +100,7 @@ export default function Dashboard() {
 
     let unsub1: (() => void) | null = null;
     let unsub2: (() => void) | null = null;
+    let unsub3: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (!user) {
@@ -142,6 +147,20 @@ export default function Dashboard() {
       };
       fetchSensorHistory();
 
+      // Last saved vitals — shown as fallback when sensor is disconnected
+      const lastVitalsQuery = query(
+        collection(db, "savedReadings"),
+        where("patientId", "==", patientId),
+        orderBy("timestamp", "desc"), limit(10)
+      );
+      unsub3 = onSnapshot(lastVitalsQuery, snap => {
+        const vitalsDoc = snap.docs.find(d => {
+          const t = d.data().type;
+          return !t || t === "vitals";
+        });
+        if (vitalsDoc) setLastKnownVitals(vitalsDoc.data());
+      });
+
       // Blood sugar live listener
       const bsQuery = query(
         collection(db, "bloodSugarReadings"),
@@ -174,6 +193,7 @@ export default function Dashboard() {
       unsubAuth();
       unsub1?.();
       unsub2?.();
+      unsub3?.();
     };
   }, [navigate]);
 
@@ -213,6 +233,36 @@ export default function Dashboard() {
     } catch (err) { console.error(err); }
   }
 
+  // Save current vitals reading to history
+  const saveCurrentReading = async () => {
+    const patientId = localStorage.getItem("userId");
+    if (!patientId || !currentVitals) {
+      alert("No vitals data to save. Please connect your sensor first.");
+      return;
+    }
+
+    setSavingReading(true);
+    try {
+      await addDoc(collection(db, "savedReadings"), {
+        patientId,
+        type: "vitals",
+        hr: currentVitals.hr || null,
+        spo2: currentVitals.spo2 || null,
+        sbp: currentVitals.sbp || null,
+        dbp: currentVitals.dbp || null,
+        mean_bp: currentVitals.mean_bp || null,
+        timestamp: serverTimestamp(),
+      });
+      setReadingSaved(true);
+      setTimeout(() => setReadingSaved(false), 3000);
+    } catch (err) {
+      console.error("Error saving reading:", err);
+      alert("Failed to save reading. Please try again.");
+    } finally {
+      setSavingReading(false);
+    }
+  };
+
   const handleVitalsUpdate = (v: any) => {
     setCurrentVitals(v);
     setVitalsHistory(prev => [...prev, v].slice(-20));
@@ -223,8 +273,10 @@ export default function Dashboard() {
     ].slice(0, 10));
   };
 
-  const displayVitals = currentVitals
-    ? { ...currentVitals, blood_sugar: latestBloodSugar || currentVitals.blood_sugar }
+  const isLive = !!currentVitals;
+  const baseVitals = currentVitals ?? lastKnownVitals;
+  const displayVitals = baseVitals
+    ? { ...baseVitals, blood_sugar: latestBloodSugar || baseVitals.blood_sugar }
     : null;
 
   return (
@@ -246,7 +298,33 @@ export default function Dashboard() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={saveCurrentReading}
+              disabled={savingReading || !currentVitals}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition shadow-sm ${
+                readingSaved
+                  ? "bg-emerald-500 text-white"
+                  : "bg-gradient-to-r from-rose-500 to-rose-600 text-white hover:from-rose-600 hover:to-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              }`}
+            >
+              {readingSaved ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Saved!
+                </>
+              ) : savingReading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Reading
+                </>
+              )}
+            </button>
             <SnapshotButton currentVitals={displayVitals} />
             <button
               onClick={addTestData}
@@ -259,6 +337,12 @@ export default function Dashboard() {
         </div>
 
         {/* ── Quick stats row ─────────────────────────────────────────────────── */}
+        {displayVitals && !isLive && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit text-xs text-[var(--muted-foreground)] border border-[var(--border)]">
+            <div className="w-2 h-2 rounded-full bg-slate-400" />
+            Showing last saved reading — connect sensor for live values
+          </div>
+        )}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Heart Rate"  value={displayVitals?.hr}   unit="BPM"   color="rose"   sublabel={displayVitals?.hr ? (displayVitals.hr < 60 ? "Low" : displayVitals.hr > 100 ? "High" : "Normal") : ""} sparkData={vitalsHistory.map((v: any) => v.hr).filter(Boolean)} />
           <StatCard label="SpO₂"        value={displayVitals?.spo2} unit="%"     color="indigo"                                                                                                                     sparkData={vitalsHistory.map((v: any) => v.spo2).filter(Boolean)} />
@@ -431,6 +515,9 @@ export default function Dashboard() {
         )}
 
       </div>
+
+      {/* AI ChatBot */}
+      <ChatBot />
     </SidebarLayout>
   );
 }

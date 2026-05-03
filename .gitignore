@@ -17,6 +17,9 @@ ServiceAccountKey.json
 
 # Large ML model weights (too large for GitHub — store separately)
 *.h5
+*.pth
+__pycache__/
+*.pyc
 
 # OS
 .DS_Store

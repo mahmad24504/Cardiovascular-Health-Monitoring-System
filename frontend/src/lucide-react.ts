@@ -49,4 +49,6 @@ export {
   LuSmartphone as Smartphone,
   LuTrendingUp as TrendingUp,
   LuMic as Mic,
+  LuCircleHelp as HelpCircle,
+  LuChevronDown as ChevronDown,
 } from "react-icons/lu";

@@ -45,7 +45,7 @@
 // ── WiFi / Backend ────────────────────────────────────────────────────────────
 const char* SSID       = "Ahmad";
 const char* PASSWORD   = "ouatiwafy2";
-const char* SERVER_URL = "http://10.229.184.186:5000/api/readings";
+const char* SERVER_URL = "http://10.79.181.186:5000/api/readings";
 
 // ── I2S pins (INMP441) ────────────────────────────────────────────────────────
 #define I2S_WS   15
@@ -324,12 +324,12 @@ void loop() {
   if (currentMode == 2) {
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("RECORDING PPG..");
-    lcd.setCursor(0, 1); lcd.print("Keep still 120s");
+    lcd.setCursor(0, 1); lcd.print("Keep still  45s");
 
     unsigned long start   = millis();
     unsigned long lastCnt = 0;
 
-    while (millis() - start < 120000UL) {
+    while (millis() - start < 50000UL) {
       long ir  = particleSensor.getIR();
       long red = particleSensor.getRed();
 
@@ -341,7 +341,7 @@ void loop() {
       // LCD countdown every 5 s
       if (millis() - lastCnt > 5000) {
         lastCnt = millis();
-        int secs = (int)((120000UL - (millis() - start)) / 1000);
+        int secs = (int)((50000UL - (millis() - start)) / 1000);
         char buf[17];
         snprintf(buf, sizeof(buf), "%-3ds remaining   ", secs);
         lcd.setCursor(0, 1);

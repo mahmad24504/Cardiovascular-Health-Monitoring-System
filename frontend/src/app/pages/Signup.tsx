@@ -25,6 +25,7 @@ export default function SignUp() {
   const [age, setAge] = useState("");
   const [sex, setSex] = useState("");
   const [role, setRole] = useState("patient");
+  const [phone, setPhone] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -106,10 +107,12 @@ export default function SignUp() {
         createdAt: new Date().toISOString(),
       };
 
+      if (phone.trim()) userData.phone = phone.trim();
+
       if (role === "patient") {
         userData.age = age;
         userData.sex = sex;
-        userData.assignedDoctorId = null; // admin assigns this later
+        userData.assignedDoctorId = null;
       } else if (role === "doctor") {
         userData.licenseNumber = licenseNumber;
         userData.specialization = specialization;
@@ -208,6 +211,14 @@ export default function SignUp() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
+        />
+
+        <input
+          className="w-full p-3 border border-[var(--border)] rounded-lg mb-3 focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--primary)] transition bg-[var(--input-background)]"
+          type="tel"
+          placeholder="WhatsApp Number (e.g. 03001234567)"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
         />
 
         {role === "patient" ? (

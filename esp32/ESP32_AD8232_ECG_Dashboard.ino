@@ -27,7 +27,7 @@
 // ── WiFi / Backend ────────────────────────────────────────────────────────────
 const char* SSID       = "Ahmad";
 const char* PASSWORD   = "ouatiwafy2";
-const char* SERVER_URL = "http://10.229.184.186:5000/api/ecg";
+const char* SERVER_URL = "http://10.79.181.186:5000/api/ecg";
 
 // ── AD8232 Pins ───────────────────────────────────────────────────────────────
 #define ECG_PIN    34   // Analog output from AD8232
@@ -145,3 +145,4 @@ void loop() {
 
   // No extra delay — the 250-sample collection already took ~1 second
 }
+

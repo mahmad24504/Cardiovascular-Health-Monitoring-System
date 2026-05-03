@@ -8,7 +8,7 @@ import { LuChevronRight, LuBell } from "react-icons/lu";
 import {
   Heart, Activity, Droplets, MessageCircle, User, LogOut, X,
   Settings, Users, Stethoscope, AlertCircle, Menu,
-  ChevronRight, Bell
+  ChevronRight, Bell, HelpCircle, Calendar
 } from "lucide-react";
 
 interface SidebarLayoutProps {
@@ -57,8 +57,11 @@ export default function SidebarLayout({ children, role }: SidebarLayoutProps) {
   // ── Nav items per role ──────────────────────────────────────────────────────
   const patientNav: NavItem[] = [
     { label: "Dashboard",      path: "/dashboard",      icon: <Activity className="w-5 h-5" /> },
+    { label: "History",        path: "/history",        icon: <Calendar className="w-5 h-5" /> },
     { label: "Blood Sugar",    path: "/dashboard?tab=forms",        icon: <Droplets className="w-5 h-5" /> },
     { label: "Questionnaire",  path: "/dashboard?tab=questionnaire", icon: <AlertCircle className="w-5 h-5" /> },
+    { label: "How to Use",     path: "/how-to-use",     icon: <Stethoscope className="w-5 h-5" /> },
+    { label: "About Us",       path: "/about-us",       icon: <HelpCircle className="w-5 h-5" /> },
     { label: "Contact Doctor", path: "/contact-doctor", icon: <MessageCircle className="w-5 h-5" />, badge: unread },
   ];
 
@@ -92,7 +95,7 @@ export default function SidebarLayout({ children, role }: SidebarLayoutProps) {
       <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
         <HeartPulse />
         <div>
-          <p className="text-white font-bold text-base tracking-tight leading-none">CardioMonitor</p>
+          <p className="text-white font-bold text-base tracking-tight leading-none">CardioTrix</p>
           <p className="text-rose-300/70 text-xs mt-0.5 capitalize">{profile.role} Portal</p>
         </div>
       </div>
@@ -216,7 +219,7 @@ export default function SidebarLayout({ children, role }: SidebarLayoutProps) {
           </button>
           <div className="flex items-center gap-2">
             <Heart className="w-5 h-5 text-rose-500" fill="currentColor" />
-            <span className="text-white font-bold text-sm">CardioMonitor</span>
+            <span className="text-white font-bold text-sm">CardioTrix</span>
           </div>
         </header>
 

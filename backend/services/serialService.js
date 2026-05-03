@@ -19,9 +19,9 @@ const axios             = require("axios");
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PCG_SAMPLE_RATE = 16000;       // Hz — matches ESP32 i2s_config.sample_rate
-const PCG_RECORD_SECS = 60;          // seconds of heart sound to capture
+const PCG_RECORD_SECS = 15;          // seconds of heart sound to capture (model uses 3s internally)
 const PCG_SEND_SECS   = 10;          // seconds to send to the model (enough for MFCC)
-const PPG_RECORD_SECS = 120;         // seconds of PPG to capture
+const PPG_RECORD_SECS = 45;          // seconds of PPG to capture (yields ~4 windows, good accuracy)
 
 let isRecording = false;
 

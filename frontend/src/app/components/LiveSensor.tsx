@@ -1,7 +1,9 @@
 // src/app/components/LiveSensor.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { Activity, Heart, Droplets, Wind, Stethoscope, Link, TrendingUp } from "lucide-react";
+import { Activity, Heart, Droplets, Wind, Stethoscope, Link, TrendingUp, Save } from "lucide-react";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase";
 
 interface LiveSensorProps {
   deviceId?: string;
@@ -130,23 +132,45 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
 
   // ECG recording
   type RecordState = "idle" | "recording" | "done";
+  type EcgAnalysis = { decision: string; mean_p_abnormal: number; windows: any[]; filtered_samples: number[] } | null;
+
   const [recordState,     setRecordState]     = useState<RecordState>("idle");
-  const [countdown,       setCountdown]       = useState(5);
+  const [countdown,       setCountdown]       = useState(30);
   const [recordedSamples, setRecordedSamples] = useState<number[]>([]);
   const [recordedAt,      setRecordedAt]      = useState<string>("");
-  const recordingRef      = useRef(false);          // readable inside socket closure
+  const [savingEcg,       setSavingEcg]       = useState(false);
+  const [ecgSaved,        setEcgSaved]        = useState(false);
+  const [ecgAnalysis,     setEcgAnalysis]     = useState<EcgAnalysis>(null);
+  const [analyzing,       setAnalyzing]       = useState(false);
+  const recordingRef      = useRef(false);
   const recordBufRef      = useRef<number[]>([]);
   const recTimerRef       = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const cntTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const analyzeEcg = async (samples: number[]) => {
+    setAnalyzing(true);
+    setEcgAnalysis(null);
+    try {
+      const res = await fetch("http://localhost:5005/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ samples, sample_rate: 250 }),
+      });
+      if (res.ok) setEcgAnalysis(await res.json());
+    } catch { /* server may not be running */ }
+    finally { setAnalyzing(false); }
+  };
 
   const startRecording = () => {
     recordBufRef.current   = [];
     recordingRef.current   = true;
     setRecordState("recording");
-    setCountdown(5);
+    setCountdown(30);
     setRecordedSamples([]);
+    setEcgSaved(false);
+    setEcgAnalysis(null);
 
-    let secs = 5;
+    let secs = 30;
     cntTimerRef.current = setInterval(() => {
       secs--;
       setCountdown(secs);
@@ -160,7 +184,33 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
       setRecordedSamples(captured);
       setRecordedAt(new Date().toISOString());
       setRecordState("done");
-    }, 5000);
+      analyzeEcg(captured);
+    }, 30000);
+  };
+
+  const saveEcgToHistory = async () => {
+    const patientId = localStorage.getItem("userId");
+    if (!patientId || recordedSamples.length === 0) return;
+    setSavingEcg(true);
+    try {
+      await addDoc(collection(db, "savedReadings"), {
+        patientId,
+        type: "ecg_recording",
+        ecg_samples: recordedSamples,
+        duration_sec: Math.round(recordedSamples.length / 250),
+        sample_rate: 250,
+        ecg_result: ecgAnalysis?.decision || null,
+        ecg_probability: ecgAnalysis?.mean_p_abnormal ?? null,
+        ecg_windows: ecgAnalysis?.windows || null,
+        timestamp: serverTimestamp(),
+      });
+      setEcgSaved(true);
+      setTimeout(() => setEcgSaved(false), 4000);
+    } catch (e) {
+      console.error("Failed to save ECG to history:", e);
+    } finally {
+      setSavingEcg(false);
+    }
   };
 
   const resetRecording = () => {
@@ -170,7 +220,9 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
     recordBufRef.current = [];
     setRecordState("idle");
     setRecordedSamples([]);
-    setCountdown(5);
+    setCountdown(30);
+    setEcgSaved(false);
+    setEcgAnalysis(null);
   };
 
   const saveRecordingCsv = () => {
@@ -179,7 +231,7 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
     const lines = [
       `# ECG Recording — Cardiotrix`,
       `# Recorded   : ${recordedAt}`,
-      `# Duration   : ~5 seconds`,
+      `# Duration   : ~30 seconds`,
       `# Sample Rate: ${fs} Hz`,
       `# Samples    : ${recordedSamples.length}`,
       `# Filter     : Bandpass 0.5-40Hz · Notch 50Hz · Savitzky-Golay · Z-normalized`,
@@ -506,7 +558,7 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
                            disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
               >
                 <span className="w-2 h-2 rounded-full bg-white" />
-                Record ECG
+                Record 30s ECG
               </button>
             )}
 
@@ -534,6 +586,7 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
         {/* Recording result */}
         {recordState === "done" && recordedSamples.length > 0 && (
           <div className="border border-emerald-800 rounded-xl p-4 bg-slate-950 space-y-3">
+            {/* Header row */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <p className="text-sm font-semibold text-emerald-400">Recording Complete</p>
@@ -541,16 +594,92 @@ export default function LiveSensor({ deviceId, onVitalsUpdate }: LiveSensorProps
                   {recordedSamples.length} samples · ~{(recordedSamples.length / 250).toFixed(1)}s · 250 Hz
                 </p>
               </div>
-              <button
-                onClick={saveRecordingCsv}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600
-                           text-white text-xs font-semibold transition-colors"
-              >
-                ↓ Save CSV
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={saveEcgToHistory}
+                  disabled={savingEcg || ecgSaved}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    ecgSaved
+                      ? "bg-emerald-900 text-emerald-300 cursor-default"
+                      : "bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
+                  }`}
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {ecgSaved ? "Saved!" : savingEcg ? "Saving…" : "Save to History"}
+                </button>
+                <button
+                  onClick={saveRecordingCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition-colors"
+                >
+                  ↓ CSV
+                </button>
+              </div>
             </div>
-            {/* Preview of recorded waveform */}
-            <ECGWaveform samples={recordedSamples} />
+
+            {/* ECG Analysis result */}
+            {analyzing && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg">
+                <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs text-slate-300">Analysing ECG — running AI model…</p>
+              </div>
+            )}
+            {ecgAnalysis && (
+              <div className={`rounded-lg p-3 border ${
+                ecgAnalysis.decision === "NORMAL"
+                  ? "bg-emerald-950 border-emerald-700"
+                  : "bg-red-950 border-red-700"
+              }`}>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold ${ecgAnalysis.decision === "NORMAL" ? "text-emerald-400" : "text-red-400"}`}>
+                      {ecgAnalysis.decision === "NORMAL" ? "✓ NORMAL ECG" : "⚠ ABNORMAL ECG"}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                      ecgAnalysis.decision === "NORMAL" ? "bg-emerald-800 text-emerald-300" : "bg-red-800 text-red-300"
+                    }`}>
+                      {(ecgAnalysis.mean_p_abnormal * 100).toFixed(1)}% abnormal probability
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">ECGFounder student model</p>
+                </div>
+                {/* Per-window breakdown */}
+                <div className="flex gap-2 flex-wrap">
+                  {ecgAnalysis.windows.map((w: any) => (
+                    <div key={w.window} className={`text-[10px] px-2 py-1 rounded font-medium ${
+                      w.decision === "NORMAL" ? "bg-emerald-900 text-emerald-300" : "bg-red-900 text-red-300"
+                    }`}>
+                      {w.t_start}s–{w.t_start + 10}s: {w.decision} ({(w.p_abnormal * 100).toFixed(0)}%)
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Scrollable waveform — filtered if analysis done, raw otherwise */}
+            {(() => {
+              const display = ecgAnalysis?.filtered_samples ?? recordedSamples;
+              const label   = ecgAnalysis ? "Filtered ECG" : "Raw ECG";
+              const W = Math.max(600, display.length * 1.5);
+              const H = 100;
+              const min = Math.min(...display), max = Math.max(...display);
+              const range = max - min || 1;
+              const pts = display.map((v, i) =>
+                `${(i / (display.length - 1) * W).toFixed(1)},${(H - ((v - min) / range) * H * 0.85 - H * 0.075).toFixed(1)}`
+              ).join(" ");
+              return (
+                <>
+                  <p className="text-[10px] text-slate-500">{label} — scroll to pan →</p>
+                  <div className="overflow-x-auto cursor-grab">
+                    <svg width={W} height={H} className="block">
+                      {[0.25, 0.5, 0.75].map(f => (
+                        <line key={f} x1="0" y1={H * f} x2={W} y2={H * f} stroke="#1e293b" strokeWidth="1" />
+                      ))}
+                      <polyline points={pts} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

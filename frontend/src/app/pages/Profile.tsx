@@ -1,14 +1,15 @@
 // src/app/pages/Profile.tsx
 import React, { useState, useEffect } from "react";
-import { User, Save, Camera, CheckCircle } from "lucide-react";
+import { User, Save, Camera, CheckCircle, Smartphone } from "lucide-react";
 import { LuMail as Mail } from "react-icons/lu";
 import SidebarLayout from "../components/Sidebar";
-import { auth } from "../../firebase";
+import { auth, db } from "../../firebase";
 import { updateEmail, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export default function Profile() {
   const role = (localStorage.getItem("userRole") || "patient") as "patient" | "doctor" | "admin";
-  const [profile, setProfile] = useState({ name: "", age: "", sex: "" });
+  const [profile, setProfile] = useState({ name: "", age: "", sex: "", phone: "" });
   const [saved, setSaved]     = useState(false);
   const [newEmail, setNewEmail]         = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -18,9 +19,22 @@ export default function Profile() {
   useEffect(() => {
     const s = localStorage.getItem("userProfile");
     if (s) { try { setProfile(JSON.parse(s)); } catch {} }
-    // Pre-fill new email with current email
     const currentUser = auth.currentUser;
     if (currentUser?.email) setNewEmail(currentUser.email);
+    if (currentUser?.uid) {
+      getDoc(doc(db, "users", currentUser.uid)).then(snap => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setProfile(prev => ({
+            ...prev,
+            name:  d.name  || prev.name,
+            age:   d.age   || prev.age,
+            sex:   d.sex   || prev.sex,
+            phone: d.phone || prev.phone,
+          }));
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -28,9 +42,20 @@ export default function Profile() {
     setProfile(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     localStorage.setItem("userProfile", JSON.stringify(profile));
+    const currentUser = auth.currentUser;
+    if (currentUser?.uid) {
+      try {
+        await setDoc(doc(db, "users", currentUser.uid), {
+          name:  profile.name,
+          age:   profile.age,
+          sex:   profile.sex,
+          phone: profile.phone,
+        }, { merge: true });
+      } catch {}
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -118,6 +143,18 @@ export default function Profile() {
                 className="w-full p-3 border border-[var(--border)] rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 bg-[var(--input-background)] text-sm transition"
                 placeholder="Enter your full name" required
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
+                <span className="flex items-center gap-1.5"><Smartphone className="w-3.5 h-3.5 text-emerald-500" />WhatsApp Number</span>
+              </label>
+              <input
+                type="tel" name="phone" value={profile.phone} onChange={handleChange}
+                className="w-full p-3 border border-[var(--border)] rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 bg-[var(--input-background)] text-sm transition"
+                placeholder="e.g. 03001234567"
+              />
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">Used for WhatsApp communication with your doctor/patient</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
