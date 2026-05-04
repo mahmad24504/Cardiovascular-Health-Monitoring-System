@@ -80,6 +80,7 @@ export default function Dashboard() {
   const [bloodSugarHistory, setBloodSugarHistory] = useState<any[]>([]);
   const [vitalsHistory, setVitalsHistory]           = useState<any[]>([]);
   const [sensorHistory, setSensorHistory]           = useState<any[]>([]);
+  const [savedSensorHistory, setSavedSensorHistory] = useState<any[]>([]);
   const [assignedDoctorId, setAssignedDoctorId]   = useState<string | null>(null);
   const [emergencyReason, setEmergencyReason]     = useState("");
   const [sendingEmergency, setSendingEmergency]   = useState(false);
@@ -148,18 +149,27 @@ export default function Dashboard() {
       };
       fetchSensorHistory();
 
-      // Last saved vitals — shown as fallback when sensor is disconnected
+      // Last saved vitals — fallback for stat cards + sensor history table
       const lastVitalsQuery = query(
         collection(db, "savedReadings"),
         where("patientId", "==", patientId),
         orderBy("timestamp", "desc"), limit(10)
       );
       unsub3 = onSnapshot(lastVitalsQuery, snap => {
-        const vitalsDoc = snap.docs.find(d => {
+        const vitalsDocs = snap.docs.filter(d => {
           const t = d.data().type;
           return !t || t === "vitals";
         });
-        if (vitalsDoc) setLastKnownVitals(vitalsDoc.data());
+        if (vitalsDocs.length > 0) setLastKnownVitals(vitalsDocs[0].data());
+        setSavedSensorHistory(
+          vitalsDocs.slice(0, 5).map(d => ({
+            id: d.id,
+            ...d.data(),
+            displayTime: d.data().timestamp?.toDate
+              ? d.data().timestamp.toDate().toLocaleString()
+              : "—",
+          }))
+        );
       });
 
       // Blood sugar live listener
@@ -271,7 +281,6 @@ export default function Dashboard() {
   const handleVitalsUpdate = (v: any) => {
     setCurrentVitals(v);
     setVitalsHistory(prev => [...prev, v].slice(-20));
-    // Add live reading to sensor history display (prepend)
     setSensorHistory(prev => [
       { ...v, displayTime: new Date().toLocaleString() },
       ...prev
@@ -424,50 +433,64 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Sensor readings history */}
-            <div className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-[var(--foreground)] mb-4">Sensor Readings History</h3>
-              {sensorHistory.length === 0 ? (
-                <p className="text-sm text-[var(--muted-foreground)]">No stored readings yet. Connect your ESP32 device to start recording.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wide border-b border-[var(--border)]">
-                        <th className="pb-2 pr-4">Time</th>
-                        <th className="pb-2 pr-4">HR (BPM)</th>
-                        <th className="pb-2 pr-4">SpO₂ (%)</th>
-                        <th className="pb-2 pr-4">BP (mmHg)</th>
-                        <th className="pb-2">Heart Sound</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border)]">
-                      {sensorHistory.map((r: any, i: number) => (
-                        <tr key={r.id || i} className="hover:bg-[var(--muted)] transition-colors">
-                          <td className="py-2 pr-4 text-[var(--muted-foreground)] whitespace-nowrap">
-                            {r.displayTime || (r.timestamp ? new Date(r.timestamp).toLocaleString() : "—")}
-                          </td>
-                          <td className="py-2 pr-4 font-medium text-rose-600">{r.hr ?? "—"}</td>
-                          <td className="py-2 pr-4 font-medium text-indigo-600">{r.spo2 ?? "—"}</td>
-                          <td className="py-2 pr-4 font-medium text-violet-600">
-                            {r.sbp && r.dbp ? `${r.sbp}/${r.dbp}` : "—"}
-                          </td>
-                          <td className="py-2">
-                            {r.heart_rate_type ? (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                r.heart_rate_type === "N" ? "bg-emerald-100 text-emerald-700"
-                                : r.heart_rate_type === "AS" ? "bg-red-100 text-red-700"
-                                : "bg-amber-100 text-amber-700"
-                              }`}>{r.heart_rate_type}</span>
-                            ) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* Sensor readings history — live readings + last 5 saved */}
+            {(() => {
+              const liveRows = sensorHistory.map((r: any, i: number) => ({ ...r, _key: `live-${i}` }));
+              const savedRows = savedSensorHistory.map((r: any) => ({ ...r, _key: `saved-${r.id}` }));
+              const merged = [...liveRows, ...savedRows]
+                .filter((r, i, arr) => arr.findIndex(x => x._key === r._key) === i)
+                .slice(0, 5);
+              const hsLabel: Record<string, string> = { N: "Normal", AS: "Aortic Stenosis", MR: "Mitral Regurgitation", MS: "Mitral Stenosis", MVP: "MVP" };
+              return (
+                <div className="bg-[var(--card)] rounded-2xl border border-[var(--border)] p-6 shadow-sm">
+                  <h3 className="text-base font-semibold text-[var(--foreground)] mb-4">Last 5 Sensor Readings</h3>
+                  {merged.length === 0 ? (
+                    <p className="text-sm text-[var(--muted-foreground)]">No readings yet. Connect your ESP32 or save a reading.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wide border-b border-[var(--border)]">
+                            <th className="pb-2 pr-4">Time</th>
+                            <th className="pb-2 pr-4">HR</th>
+                            <th className="pb-2 pr-4">SpO₂</th>
+                            <th className="pb-2 pr-4">BP</th>
+                            <th className="pb-2">Heart Sound</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {merged.map((r: any) => {
+                            const hs = r.heart_sound_type || r.heart_rate_type;
+                            return (
+                              <tr key={r._key} className="hover:bg-[var(--muted)] transition-colors">
+                                <td className="py-2 pr-4 text-[var(--muted-foreground)] whitespace-nowrap text-xs">
+                                  {r.displayTime || (r.timestamp?.toDate ? r.timestamp.toDate().toLocaleString() : "—")}
+                                </td>
+                                <td className="py-2 pr-4 font-medium text-rose-600">{r.hr ?? "—"}</td>
+                                <td className="py-2 pr-4 font-medium text-indigo-600">{r.spo2 ? `${r.spo2}%` : "—"}</td>
+                                <td className="py-2 pr-4 font-medium text-violet-600">
+                                  {r.sbp && r.dbp ? `${r.sbp}/${r.dbp}` : "—"}
+                                </td>
+                                <td className="py-2">
+                                  {hs ? (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                      hs === "N" ? "bg-emerald-100 text-emerald-700"
+                                      : hs === "AS" ? "bg-red-100 text-red-700"
+                                      : hs === "MR" || hs === "MS" ? "bg-amber-100 text-amber-700"
+                                      : "bg-purple-100 text-purple-700"
+                                    }`}>{hsLabel[hs] ?? hs}</span>
+                                  ) : "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Emergency */}
             <div className="bg-[var(--card)] rounded-2xl border border-red-200 p-6 shadow-sm">
