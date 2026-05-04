@@ -155,12 +155,9 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
   }
 
   if (reading.type === "blood_sugar") {
-    const spo2Color2 = (v: number) => v < 90 ? "text-red-500" : v < 95 ? "text-blue-500" : "text-emerald-500";
-    const bpColor2   = (sbp: number, dbp: number) =>
-      sbp >= 130 || dbp >= 85 ? "text-red-500" : sbp < 90 || dbp < 60 ? "text-blue-500" : "text-emerald-500";
     return (
       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-800">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center">
               <Droplets className="w-3.5 h-3.5 text-white" />
@@ -171,20 +168,6 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
             </div>
           </div>
           <p className="text-[10px] text-[var(--muted-foreground)]">{time}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-amber-200 dark:border-amber-700 text-center">
-          <div>
-            <p className="text-[10px] text-[var(--muted-foreground)]">SpO₂</p>
-            <p className={`text-sm font-bold ${reading.spo2 ? spo2Color2(reading.spo2) : "text-slate-300"}`}>
-              {reading.spo2 ? `${reading.spo2}%` : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[var(--muted-foreground)]">BP</p>
-            <p className={`text-sm font-bold ${reading.sbp && reading.dbp ? bpColor2(reading.sbp, reading.dbp) : "text-slate-300"}`}>
-              {reading.sbp && reading.dbp ? `${reading.sbp}/${reading.dbp}` : "—"} <span className="text-[9px] font-normal text-[var(--muted-foreground)]">mmHg</span>
-            </p>
-          </div>
         </div>
       </div>
     );
@@ -216,42 +199,44 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
         </div>
         <p className="text-[10px] text-[var(--muted-foreground)]">{time}</p>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div>
-          <p className="text-[10px] text-[var(--muted-foreground)]">HR</p>
+      <div className="grid grid-cols-2 gap-2 text-center">
+        <div className="bg-[var(--card)] rounded-lg p-2 border border-[var(--border)]">
+          <p className="text-[10px] text-[var(--muted-foreground)]">Heart Rate</p>
           <p className={`text-base font-bold ${reading.hr ? hrColor(reading.hr) : "text-slate-300"}`}>
             {reading.hr ?? "—"}
           </p>
           <p className="text-[9px] text-[var(--muted-foreground)]">BPM</p>
         </div>
-        <div>
+        <div className="bg-[var(--card)] rounded-lg p-2 border border-[var(--border)]">
           <p className="text-[10px] text-[var(--muted-foreground)]">SpO₂</p>
           <p className={`text-base font-bold ${reading.spo2 ? spo2Color(reading.spo2) : "text-slate-300"}`}>
             {reading.spo2 ?? "—"}
           </p>
           <p className="text-[9px] text-[var(--muted-foreground)]">%</p>
         </div>
-        <div>
-          <p className="text-[10px] text-[var(--muted-foreground)]">BP</p>
+        <div className="bg-[var(--card)] rounded-lg p-2 border border-[var(--border)]">
+          <p className="text-[10px] text-[var(--muted-foreground)]">Blood Pressure</p>
           <p className={`text-sm font-bold ${reading.sbp && reading.dbp ? bpColor(reading.sbp, reading.dbp) : "text-slate-300"}`}>
             {reading.sbp && reading.dbp ? `${reading.sbp}/${reading.dbp}` : "—"}
           </p>
           <p className="text-[9px] text-[var(--muted-foreground)]">mmHg</p>
         </div>
-      </div>
-      {hs && (
-        <div className="mt-2 pt-2 border-t border-[var(--border)] flex items-center gap-2">
-          <span className="text-[10px] text-[var(--muted-foreground)]">Heart Sound:</span>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hs.bg} ${hs.color}`}>
-            {hs.full}
-          </span>
-          {(reading as any).heart_sound_confidence != null && (
-            <span className="text-[10px] text-[var(--muted-foreground)] ml-auto">
-              {((reading as any).heart_sound_confidence * 100).toFixed(0)}% confidence
-            </span>
+        <div className="bg-[var(--card)] rounded-lg p-2 border border-[var(--border)]">
+          <p className="text-[10px] text-[var(--muted-foreground)]">Heart Sound</p>
+          {hs ? (
+            <>
+              <p className={`text-sm font-bold ${hs.color}`}>{hs.full}</p>
+              {(reading as any).heart_sound_confidence != null && (
+                <p className="text-[9px] text-[var(--muted-foreground)]">
+                  {((reading as any).heart_sound_confidence * 100).toFixed(0)}% conf.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm font-bold text-slate-300">—</p>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
