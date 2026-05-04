@@ -384,6 +384,8 @@ export default function Dashboard() {
             <RecordingPanel
               onPcgResult={(type, confidence) => setLastPcg({ type, confidence })}
               onPpgResult={(sbp, dbp) => setLastPpgBp({ sbp, dbp })}
+              currentHr={currentVitals?.hr ?? lastKnownVitals?.hr ?? null}
+              currentSpo2={currentVitals?.spo2 ?? lastKnownVitals?.spo2 ?? null}
             />
 
             {/* Live sensor */}

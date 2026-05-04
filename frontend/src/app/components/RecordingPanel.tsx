@@ -65,8 +65,10 @@ function bpCategory(sbp: number, dbp: number) {
 interface RecordingPanelProps {
   onPcgResult?: (type: string, confidence: number) => void;
   onPpgResult?: (sbp: number, dbp: number) => void;
+  currentHr?:   number | null;
+  currentSpo2?: number | null;
 }
-export default function RecordingPanel({ onPcgResult, onPpgResult }: RecordingPanelProps) {
+export default function RecordingPanel({ onPcgResult, onPpgResult, currentHr, currentSpo2 }: RecordingPanelProps) {
   const [status,      setStatus]      = useState<RecStatus>({ type: null, status: "idle", message: "", duration: 0 });
   const [progress,    setProgress]    = useState<RecProgress | null>(null);
   const [pcgResult,   setPcgResult]   = useState<PCGResult | null>(null);
@@ -117,8 +119,10 @@ export default function RecordingPanel({ onPcgResult, onPpgResult }: RecordingPa
       await addDoc(collection(db, "savedReadings"), {
         patientId,
         type: "vitals",
-        heart_sound_type: pcgResult.heart_sound_type,
+        heart_sound_type:       pcgResult.heart_sound_type,
         heart_sound_confidence: pcgResult.confidence,
+        hr:   currentHr   ?? null,
+        spo2: currentSpo2 ?? null,
         timestamp: serverTimestamp(),
       });
       setPcgSaved(true);
@@ -136,10 +140,12 @@ export default function RecordingPanel({ onPcgResult, onPpgResult }: RecordingPa
       const map = Math.round(ppgResult.dbp + (ppgResult.sbp - ppgResult.dbp) / 3);
       await addDoc(collection(db, "savedReadings"), {
         patientId,
-        type: "vitals",
+        type:    "vitals",
         sbp:     Math.round(ppgResult.sbp),
         dbp:     Math.round(ppgResult.dbp),
         mean_bp: map,
+        hr:      currentHr   ?? null,
+        spo2:    currentSpo2 ?? null,
         timestamp: serverTimestamp(),
       });
       setPpgSaved(true);

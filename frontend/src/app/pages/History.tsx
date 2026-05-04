@@ -196,6 +196,15 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
     sbp >= 130 || dbp >= 85 ? "text-red-500" :
     sbp < 90  || dbp < 60  ? "text-blue-500" : "text-emerald-500";
 
+  const HS_LABEL: Record<string, { full: string; color: string; bg: string }> = {
+    N:   { full: "Normal",                color: "text-emerald-700", bg: "bg-emerald-100" },
+    AS:  { full: "Aortic Stenosis",       color: "text-red-700",     bg: "bg-red-100"     },
+    MR:  { full: "Mitral Regurgitation",  color: "text-orange-700",  bg: "bg-orange-100"  },
+    MS:  { full: "Mitral Stenosis",       color: "text-amber-700",   bg: "bg-amber-100"   },
+    MVP: { full: "Mitral Valve Prolapse", color: "text-purple-700",  bg: "bg-purple-100"  },
+  };
+  const hs = (reading as any).heart_sound_type ? HS_LABEL[(reading as any).heart_sound_type] : null;
+
   return (
     <div className="rounded-xl p-3 border bg-[var(--muted)] border-[var(--border)]">
       <div className="flex items-center justify-between mb-2">
@@ -230,6 +239,19 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
           <p className="text-[9px] text-[var(--muted-foreground)]">mmHg</p>
         </div>
       </div>
+      {hs && (
+        <div className="mt-2 pt-2 border-t border-[var(--border)] flex items-center gap-2">
+          <span className="text-[10px] text-[var(--muted-foreground)]">Heart Sound:</span>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hs.bg} ${hs.color}`}>
+            {hs.full}
+          </span>
+          {(reading as any).heart_sound_confidence != null && (
+            <span className="text-[10px] text-[var(--muted-foreground)] ml-auto">
+              {((reading as any).heart_sound_confidence * 100).toFixed(0)}% confidence
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
