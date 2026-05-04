@@ -189,7 +189,7 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
   const hs = (reading as any).heart_sound_type ? HS_LABEL[(reading as any).heart_sound_type] : null;
 
   return (
-    <div className="rounded-xl p-3 border bg-[var(--muted)] border-[var(--border)]">
+    <div className="rounded-xl p-3 border bg-[var(--muted)] border-[var(--border)] min-w-0">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <div className="w-6 h-6 rounded-lg bg-rose-500 flex items-center justify-center">
@@ -219,11 +219,11 @@ function ReadingCard({ reading }: { reading: SavedReading }) {
         </div>
       </div>
       {hs && (
-        <div className="mt-1.5 pt-1.5 border-t border-[var(--border)] flex items-center gap-1.5">
-          <span className="text-[10px] text-[var(--muted-foreground)]">Heart Sound:</span>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${hs.bg} ${hs.color}`}>{hs.full}</span>
+        <div className="mt-1.5 pt-1.5 border-t border-[var(--border)] flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px] text-[var(--muted-foreground)] shrink-0">PCG:</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full truncate ${hs.bg} ${hs.color}`}>{hs.full}</span>
           {(reading as any).heart_sound_confidence != null && (
-            <span className="text-[10px] text-[var(--muted-foreground)] ml-auto">{((reading as any).heart_sound_confidence * 100).toFixed(0)}%</span>
+            <span className="text-[10px] text-[var(--muted-foreground)] ml-auto shrink-0">{((reading as any).heart_sound_confidence * 100).toFixed(0)}%</span>
           )}
         </div>
       )}
