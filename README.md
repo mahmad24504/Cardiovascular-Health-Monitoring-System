@@ -361,7 +361,6 @@ This project is licensed under the ISC License - see the LICENSE file for detail
 
 For questions or collaboration:
 - **Email:** akhan.bee22seecs@seecs.edu.pk - mahmad24504@gmail.com
-- 
 - **GitHub Issues:** Open an issue in this repository
 
 ---
